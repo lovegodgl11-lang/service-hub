@@ -1,0 +1,2962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navrose Stitching Point</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1f2937">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-storage-compat.js"></script>
+  <!-- PDF Generation Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    :root {
+        --bg-primary: #f3f4f6;
+        --bg-secondary: #ffffff;
+        --bg-sidebar: #1f2937;
+        --text-primary: #111827;
+        --text-secondary: #6b7280;
+        --text-on-sidebar: #d1d5db;
+        --text-on-accent: #ffffff;
+        --accent-primary: #4f46e5;
+        --accent-hover: #4338ca;
+        --border-color: #d1d5db;
+        --shadow-color: rgba(0,0,0,0.1);
+        --status-completed-bg: #d1fae5;
+        --status-completed-text: #065f46;
+        --status-pending-bg: #fef3c7;
+        --status-pending-text: #92400e;
+    }
+    html,body { height:100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      margin:0;
+      padding:2rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      background-color: var(--bg-secondary);
+      border-radius: 1.5rem;
+      box-shadow: 0 10px 15px var(--shadow-color);
+      overflow: hidden;
+      min-height: 85vh;
+      display: flex;
+    }
+    .nav-sidebar {
+      width: 250px;
+      background-color: var(--bg-sidebar);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .nav-button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      border-radius: 0.75rem;
+      color: var(--text-on-sidebar);
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      border: none;
+      text-align: left;
+      font-size: 1rem;
+      text-decoration: none;
+      position: relative;
+    }
+    .nav-button.active {
+      background-color: var(--accent-primary);
+      color: var(--text-on-accent);
+      font-weight: 600;
+    }
+    .nav-button:hover:not(.active) {
+      background-color: rgba(255,255,255,0.1);
+    }
+    .nav-button svg { margin-right: 0.75rem; min-width: 24px; min-height: 24px; }
+    .content-area {
+      flex-grow: 1;
+      padding: 2.5rem;
+      overflow-y: auto;
+    }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border-color);
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      line-height: 1.5rem;
+      transition: all 0.2s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 15%, transparent);
+    }
+    .status-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-weight: 500;
+      font-size: 0.875rem;
+      white-space: nowrap;
+      display: inline-block;
+    }
+    .status-completed { background-color: var(--status-completed-bg); color: var(--status-completed-text); }
+    .status-pending { background-color: var(--status-pending-bg); color: var(--status-pending-text); }
+    
+    .modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.6);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background-color: var(--bg-secondary);
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      width: 90%;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    @keyframes fadeIn { from {opacity:0; transform: scale(0.98);} to {opacity:1; transform: scale(1);} }
+    .hidden-modal { display: none; }
+    .mini-ledger-table th, .mini-ledger-table td {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #e5e7eb;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+    }
+    .mini-ledger-table thead th {
+      background-color: #f9fafb;
+      font-weight: 600;
+      border-bottom: 2px solid #9ca3af;
+    }
+    .mini-ledger-summary td {
+      font-weight: 700;
+      background-color: #f3f4f6;
+      border-top: 2px solid #374151;
+      text-align: right;
+    }
+    .mini-ledger-scroll { max-height: 250px; overflow-y:auto; margin-top:1rem; border:1px solid #ddd; border-radius:0.5rem; }
+    
+    #toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #111827; color: white; padding: 0.75rem 1rem; border-radius: 0.75rem; box-shadow: 0 6px 18px rgba(0,0,0,0.2); transition: opacity .25s ease; z-index:1200; }
+    #toast.hidden { opacity: 0; pointer-events: none; }
+    .search-result-item { cursor: pointer; }
+    .search-highlight { background: linear-gradient(90deg,#fff59d,#fffde7); padding:0.15rem 0.25rem; border-radius:4px; }
+    
+    .image-preview-container { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .image-preview { position: relative; }
+    .image-preview img { width: 80px; height: 80px; object-fit: cover; border-radius: 0.5rem; border: 1px solid #ddd; }
+    .image-preview .delete-img-btn { position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; justify-content: center; align-items: center; font-size: 12px; cursor: pointer; border: 1px solid white; }
+
+    #notification-badge { top: -4px; right: -4px; }
+    /* Chat & Video Call Styles */
+    .chat-container { display: flex; height: 65vh; }
+    .customer-list { width: 30%; border-right: 1px solid var(--border-color); overflow-y: auto; }
+    .customer-list-item { padding: 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border-color); }
+    .customer-list-item:hover { background-color: color-mix(in srgb, var(--bg-primary) 50%, white); }
+    .customer-list-item.active { background-color: var(--accent-primary); color: var(--text-on-accent); }
+    .chat-area { flex-grow: 1; display: flex; flex-direction: column; }
+    .chat-messages { flex-grow: 1; padding: 1rem; overflow-y: auto; }
+    .chat-message { max-width: 80%; padding: 0.5rem 1rem; border-radius: 1rem; margin-bottom: 0.5rem; word-wrap: break-word; }
+    .chat-message.user { background: #e5e7eb; color: #374151; margin-right: auto; border-bottom-left-radius: 0.25rem; }
+    .chat-message.bot { background: var(--accent-primary); color: white; margin-left: auto; border-bottom-right-radius: 0.25rem; }
+    .video-call-container { position: relative; background-color: #000; flex-grow: 1; }
+    #remoteVideo { width: 100%; height: 100%; object-fit: contain; }
+    #localVideo { position: absolute; bottom: 1rem; right: 1rem; width: 150px; border: 2px solid white; border-radius: 0.5rem; }
+    
+    /* Responsive Design */
+    @media (max-width: 900px) {
+      body { padding: 0.5rem; }
+      .container { flex-direction: column; min-height: 100vh; border-radius: 0.75rem; }
+      .nav-sidebar { width: 100%; flex-direction: row; overflow-x:auto; gap: 0.25rem; padding: 0.5rem; align-items: stretch; }
+      .nav-sidebar h1 { display: none; }
+      .nav-button { flex: 1 0 auto; justify-content: center; padding: 0.5rem; font-size: 0.875rem; white-space: nowrap; }
+      .nav-button svg { margin-right: 0.5rem; }
+      .content-area { padding: 1.5rem; }
+      .dashboard-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+    }
+    @media (max-width: 640px) {
+      body { padding: 0; }
+      .container { border-radius: 0; }
+      .content-area { padding: 1rem; }
+      .nav-button { font-size: 0.75rem; }
+      .nav-button span { display: none; } /* Hide text on very small screens */
+      .nav-button svg { margin-right: 0; }
+      #global-search-input { min-width: auto !important; width: 100%; }
+      .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+      .chat-container { flex-direction: column; height: 75vh; }
+      .customer-list { width: 100%; height: 150px; border-right: none; border-bottom: 1px solid var(--border-color); }
+    }
+  </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div class="container" role="application" aria-label="Tailor shop management">
+    <nav class="nav-sidebar" role="navigation" aria-label="Main Navigation">
+      <h1 class="text-2xl font-bold text-white mb-6">Navrose Stitching Point</h1>
+      <button id="tab-dashboard" class="nav-button active" aria-pressed="true" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M10.5 4.5a3 3 0 0 0-3 3v.75a.75.75 0 0 1-1.5 0v-.75a4.5 4.5 0 0 1 4.5-4.5h3a4.5 4.5 0 0 1 4.5 4.5v.75a.75.75 0 0 1-1.5 0v-.75a3 3 0 0 0-3-3h-3Z" /><path fill-rule="evenodd" d="M15.75 8.25a.75.75 0 0 1 .75.75v5.25a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm-4.5 0a.75.75 0 0 1 .75.75v5.25a.75.75 0 0 1-1.5 0V9A.75.75 0 0 1 11.25 8.25Zm-3.75.75a.75.75 0 0 0-1.5 0v5.25a.75.75 0 0 0 1.5 0V9Z" /><path d="M2.25 12c0-3.573 2.642-6.535 6.07-7.122A.75.75 0 0 1 9 5.628v12.744a.75.75 0 0 1-1.192.594C4.354 18.2 2.25 15.34 2.25 12Z" /><path d="M21.75 12c0 3.573-2.642 6.535-6.07 7.122A.75.75 0 0 0 15 18.372V5.628a.75.75 0 0 0-1.192-.594C17.646 5.7 21.75 8.66 21.75 12Z" /></svg><span>Dashboard</span></button>
+      <button id="tab-order-entry" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a.75.75 0 0 0-1.5 0v.25a.75.75 0 0 0 1.5 0v-.25ZM12.75 9a.75.75 0 0 1 .75-.75h.25a.75.75 0 0 1 0 1.5h-.25a.75.75 0 0 1-.75-.75Z" clip-rule="evenodd" /><path d="M4.5 13.5a.75.75 0 0 1 .75-.75h13.5a.75.75 0 0 1 0 1.5H5.25a.75.75 0 0 1-.75-.75Z" /><path d="M4.5 16.5a.75.75 0 0 1 .75-.75h13.5a.75.75 0 0 1 0 1.5H5.25a.75.75 0 0 1-.75-.75Z" /></svg><span>New Suit Orders</span></button>
+      <button id="tab-alterations" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M12.983 5.033a1.5 1.5 0 0 0-1.483.033L6.5 8.5v7l5 3.5 5-3.5v-7l-5.017-3.467ZM11.25 4.5v.033a3 3 0 0 1 2.966-.033L19.25 8.5v7l-5 3.5-6.034-4.224a.75.75 0 0 1 1.068-.916l4.966 3.476 3.25-2.275v-4.9l-4.25-2.975v-.05Z" /><path fill-rule="evenodd" d="M11.63 4.53a.75.75 0 0 0-.88 0l-5.25 3.675a.75.75 0 0 0-.3 1.28L11 14.25l5.8-4.765a.75.75 0 0 0-.3-1.28L11.63 4.53ZM6.56 8.5l4.5-3.15 4.5 3.15-4.5 3.6-4.5-3.6Z" clip-rule="evenodd" /></svg><span>Alterations &amp; Repairs</span></button>
+      <button id="tab-ledger" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M5.625 1.5c-1.036 0-1.875.84-1.875 1.875v17.25c0 1.035.84 1.875 1.875 1.875h12.75c1.035 0 1.875-.84 1.875-1.875V12.75A3.75 3.75 0 0 0 16.5 9h-1.875a.375.375 0 0 1-.375-.375V6.75A3.75 3.75 0 0 0 10.5 3H5.625Z" /><path d="M12.75 3.75a.75.75 0 0 0-1.5 0v2.25c0 .207.168.375.375.375h2.25a.75.75 0 0 0 0-1.5h-1.125V3.75Z" /></svg><span>Ledger</span></button>
+      <button id="tab-payments" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M4.5 3.75a3 3 0 0 0-3 3v10.5a3 3 0 0 0 3 3h15a3 3 0 0 0 3-3V6.75a3 3 0 0 0-3-3h-15Z" /><path d="M22.5 9.75a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1 0-1.5h19.5a.75.75 0 0 1 .75.75Z" /></svg><span>Payments</span></button>
+      <button id="tab-client-chat" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M4.848 2.771A49.144 49.144 0 0 1 12 2.25c2.43 0 4.817.178 7.152.52 1.978.292 3.348 2.024 3.348 3.97v6.02c0 1.946-1.37 3.678-3.348 3.97a48.901 48.901 0 0 1-3.476.383.39.39 0 0 0-.297.15l-2.755 4.133a.75.75 0 0 1-1.248 0l-2.755-4.133a.39.39 0 0 0-.297-.15 48.9 48.9 0 0 1-3.476-.384c-1.978-.29-3.348-2.024-3.348-3.97V6.741c0-1.946 1.37-3.68 3.348-3.97Z" clip-rule="evenodd" /></svg><span>Client Chat</span></button>
+      <button id="tab-online-bookings" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd" /></svg><span>Online Bookings</span><span id="online-booking-badge" class="absolute bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden" style="top:4px; right:4px;"></span></button>
+      <button id="tab-market-todo" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-1.72 6.97a.75.75 0 1 0-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06L12 13.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L13.06 12l1.72-1.72a.75.75 0 1 0-1.06-1.06L12 10.94l-1.72-1.72Z" clip-rule="evenodd" /></svg><span>Market To-Do</span></button>
+      <button id="tab-reminders" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M5.25 2.25A3.75 3.75 0 0 0 1.5 6v12A3.75 3.75 0 0 0 5.25 21.75h13.5A3.75 3.75 0 0 0 22.5 18V6a3.75 3.75 0 0 0-3.75-3.75H5.25Zm.75 9a.75.75 0 0 1 .75.75v.008c0 .414.336.75.75.75h6a.75.75 0 0 0 0-1.5h-5.25v-.008a.75.75 0 0 1-.75-.75Zm.75 3.75a.75.75 0 0 0 0 1.5h6a.75.75 0 0 0 0-1.5h-6Z" clip-rule="evenodd" /></svg><span>Reminders</span></button>
+      <button id="tab-customers" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M4.5 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM14.25 8.625a3.375 3.375 0 1 1 6.75 0 3.375 3.375 0 0 1-6.75 0ZM1.5 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.12v-.003ZM12.375 21a.75.75 0 0 1 .75.75v.008c0 .414.336.75.75.75h3.75a.75.75 0 0 0 0-1.5h-3a.75.75 0 0 1-.75-.75v-.008a.75.75 0 0 1-.75-.75Z" /></svg><span>Customer Profiles</span></button>
+      <button id="tab-settings" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 5.85a1.5 1.5 0 0 1-1.686.971l-1.708-.427a1.875 1.875 0 0 0-2.096 1.62L3.16 9.793a1.875 1.875 0 0 0 1.214 2.311l1.707.427a1.5 1.5 0 0 1 .97 1.686l-.173 2.121a1.875 1.875 0 0 0 1.62 2.096l2.09-.39a1.5 1.5 0 0 1 1.968 1.968l-.39 2.09a1.875 1.875 0 0 0 2.096 1.62l2.121-.173a1.5 1.5 0 0 1 1.686.97l.427 1.708a1.875 1.875 0 0 0 1.62 2.096l1.647-.409a1.875 1.875 0 0 0 1.62-2.096l-.173-2.121a1.5 1.5 0 0 1 .97-1.686l1.708-.427a1.875 1.875 0 0 0 2.096-1.62l.409-1.647a1.875 1.875 0 0 0-2.096-1.62l-2.121.173a1.5 1.5 0 0 1-1.686-.97l-.427-1.708a1.875 1.875 0 0 0-1.62-2.096l-1.647.409a1.875 1.875 0 0 0-1.62 2.096l.173 2.121a1.5 1.5 0 0 1-.97 1.686L5.85 9.05a1.875 1.875 0 0 0-2.311 1.214l-.409 1.647a1.5 1.5 0 0 1-1.686.97l-2.121-.173a1.875 1.875 0 0 0-2.096 1.62l-.39 2.09a1.5 1.5 0 0 1 1.968 1.968l-2.09.39a1.875 1.875 0 0 0-1.62 2.096l.173 2.121a1.5 1.5 0 0 1-.97 1.686l-1.708.427a1.875 1.875 0 0 0-1.62 2.096l-.409 1.647a1.875 1.875 0 0 0 2.096 1.62l2.121-.173a1.5 1.5 0 0 1 1.686.97l.427 1.708a1.875 1.875 0 0 0 2.311 1.214l1.647-.409a1.5 1.5 0 0 1 1.686.97l.173 2.121a1.875 1.875 0 0 0 2.096 1.62l2.09-.39a1.5 1.5 0 0 1 1.968 1.968l-.39 2.09a1.875 1.875 0 0 0 1.567 1.85c.916 0 1.699-.663 1.85-1.567l.173-2.121a1.5 1.5 0 0 1 .97-1.686l1.708-.427a1.875 1.875 0 0 0 1.62-2.096l.409-1.647a1.875 1.875 0 0 0-1.62-2.096l-1.708.427a1.5 1.5 0 0 1-1.686-.97l-.173-2.121a1.875 1.875 0 0 0-2.096-1.62l-2.09.39a1.5 1.5 0 0 1-1.968-1.968l.39-2.09a1.875 1.875 0 0 0-1.62-2.096L9.05 5.85a1.5 1.5 0 0 1-.97-1.686l.173-2.121a1.875 1.875 0 0 0-1.567-1.85ZM12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z" clip-rule="evenodd" /></svg><span>Settings</span></button>
+      <button id="tab-backup-restore" class="nav-button" aria-pressed="false" role="tab" tabindex="0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd" /></svg><span>Backup &amp; Restore</span></button>
+      <a href="client.html" target="_blank" class="nav-button" aria-label="Open Client Portal in new tab"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M15.75 2.25a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0V4.31L8.03 12.03a.75.75 0 0 1-1.06-1.06L14.69 3.25H12a.75.75 0 0 1 0-1.5h3.75Z" clip-rule="evenodd" /><path d="M3.75 6A2.25 2.25 0 0 0 1.5 8.25v12A2.25 2.25 0 0 0 3.75 22.5h12A2.25 2.25 0 0 0 18 20.25V13.5a.75.75 0 0 1 1.5 0v6.75a3.75 3.75 0 0 1-3.75 3.75h-12A3.75 3.75 0 0 1 0 20.25v-12A3.75 3.75 0 0 1 3.75 4.5h6.75a.75.75 0 0 1 0 1.5H3.75Z" /></svg><span>Client Portal</span></a>
+      <div class="mt-auto w-full">
+        <button id="sync-button" class="nav-button bg-gray-700 hover:bg-gray-600">
+          <svg id="sync-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.181-3.183m-11.664 0l3.181-3.183a8.25 8.25 0 00-11.664 0l3.181 3.183" /></svg>
+          <span id="sync-text">Sync with Cloud</span>
+        </button>
+      </div>
+    </nav>
+
+    <main id="app-content" class="content-area" tabindex="0" role="main"></main>
+  </div>
+
+  <!-- Confirmation modal -->
+  <div id="confirmation-modal" class="modal hidden-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
+    <div class="modal-content text-center">
+      <h3 id="modal-title" class="text-xl font-bold mb-4">Confirm Action</h3>
+      <p id="modal-message" class="text-gray-700 mb-6">Are you sure?</p>
+      <div class="flex justify-center space-x-4">
+        <button id="confirm-yes" class="px-6 py-2 bg-red-500 text-white rounded-lg">Yes</button>
+        <button id="confirm-no" class="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg">No</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit / Generic modal -->
+  <div id="edit-order-modal" class="modal hidden-modal" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="modal-content text-left max-w-lg">
+      <h3 id="edit-modal-title" class="text-xl font-bold mb-4">Edit</h3>
+      <div id="edit-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Receive Payment Modal -->
+  <div id="payment-modal" class="modal hidden-modal" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <div class="modal-content text-left max-w-sm">
+      <h3 id="payment-modal-title" class="text-xl font-bold mb-4">Receive Payment</h3>
+      <form id="payment-form" class="space-y-4">
+        <input type="hidden" id="payment-order-id">
+        <div>
+          <label class="block text-sm font-medium">Amount</label>
+          <input type="number" id="payment-amount" class="form-input" required step="0.01" min="0">
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Payment Mode</label>
+          <select id="payment-mode" class="form-select">
+            <option>Cash</option>
+            <option>UPI</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-3 mt-4">
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Confirm Payment</button>
+          <button type="button" id="payment-cancel" class="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <!-- Custom Notify Modal -->
+  <div id="notify-modal" class="modal hidden-modal" role="dialog" aria-modal="true">
+    <div class="modal-content text-left max-w-sm">
+      <h3 id="notify-modal-title" class="text-xl font-bold mb-4">Send Notification</h3>
+      <form id="notify-form" class="space-y-4">
+        <input type="hidden" id="notify-mobile">
+        <input type="hidden" id="notify-order-number">
+        <div>
+          <label for="notify-message" class="block text-sm font-medium">Message</label>
+          <textarea id="notify-message" class="form-textarea" rows="4" required placeholder="e.g., There is a slight delay with your order..."></textarea>
+        </div>
+        <div class="flex justify-end gap-3 mt-4">
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Send</button>
+          <button type="button" onclick="document.getElementById('notify-modal').classList.add('hidden-modal')" class="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Daily Report Modal -->
+  <div id="daily-report-modal" class="modal hidden-modal" role="dialog" aria-modal="true" aria-labelledby="daily-report-title">
+    <div class="modal-content">
+      <h3 id="daily-report-title" class="text-xl font-bold mb-4">Today's Work Summary</h3>
+      <div id="daily-report-body" class="space-y-4"></div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button id="download-daily-report" class="px-4 py-2 bg-green-600 text-white rounded-lg">Download PDF</button>
+        <button id="close-daily-report" class="px-4 py-2 bg-gray-300 rounded-lg">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screenshot viewer modal -->
+  <div id="screenshot-modal" class="modal hidden-modal" role="dialog" aria-modal="true">
+      <div class="modal-content text-center max-w-lg">
+          <h3 class="text-xl font-bold mb-4">Payment Screenshot</h3>
+          <img id="screenshot-image" src="" alt="Payment Screenshot" class="max-w-full max-h-[70vh] mx-auto rounded-lg">
+          <button onclick="document.getElementById('screenshot-modal').classList.add('hidden-modal')" class="mt-4 px-6 py-2 bg-gray-300 text-gray-800 rounded-lg">Close</button>
+      </div>
+  </div>
+
+
+  <!-- Toast -->
+  <div id="toast" class="hidden" role="status" aria-live="polite"><span id="toast-message"></span></div>
+
+  <script>
+    // 1. PASTE YOUR FIREBASE CONFIG OBJECT HERE
+    // const firebaseConfig = { ... };
+
+    // --- IMPORTANT FIREBASE SETUP ---
+    // For the Client Portal to work, you MUST set up database indexes in Firebase.
+    // 1. Go to your Firebase Console.
+    // 2. Go to Realtime Database > Rules.
+    // 3. Paste the following JSON:
+    // {
+    //   "rules": {
+    //     ".read": true,
+    //     ".write": true,
+    //     "customers": {
+    //       ".indexOn": "mobile"
+    //     },
+    //     "orders": {
+    //       ".indexOn": "customerMobile"
+    //     },
+    //     "clientNotifications": {
+    //       "$mobile": {
+    //         ".indexOn": "timestamp"
+    //       }
+    //     }
+    //   }
+    // }
+    // NOTE: The .read and .write rules are set to `true` for simplicity.
+    // For a production app, you should secure your database.
+
+
+    // --- APP STATE ---
+    let orders = [];
+    let marketTodos = [];
+    let reminders = [];
+    let customerData = [];
+    let messages = [];
+    let settings = {};
+    let currentFilters = {};
+    let db;
+    window.messageImageCache = {};
+
+    // --- THEME ---
+    const themes = {
+        default: {
+            '--bg-primary': '#f3f4f6', '--bg-secondary': '#ffffff', '--bg-sidebar': '#1f2937',
+            '--text-primary': '#111827', '--text-secondary': '#6b7280', '--text-on-sidebar': '#d1d5db',
+            '--text-on-accent': '#ffffff', '--accent-primary': '#4f46e5', '--accent-hover': '#4338ca',
+            '--border-color': '#d1d5db', '--shadow-color': 'rgba(0,0,0,0.1)',
+            '--status-completed-bg': '#d1fae5', '--status-completed-text': '#065f46',
+            '--status-pending-bg': '#fef3c7', '--status-pending-text': '#92400e',
+        },
+        light: {
+            '--bg-primary': '#f9fafb', '--bg-secondary': '#ffffff', '--bg-sidebar': '#e5e7eb',
+            '--text-primary': '#1f2937', '--text-secondary': '#4b5563', '--text-on-sidebar': '#1f2937',
+            '--text-on-accent': '#ffffff', '--accent-primary': '#14b8a6', '--accent-hover': '#0d9488',
+            '--border-color': '#d1d5db', '--shadow-color': 'rgba(0,0,0,0.07)',
+            '--status-completed-bg': '#d1fae5', '--status-completed-text': '#065f46',
+            '--status-pending-bg': '#fef3c7', '--status-pending-text': '#92400e',
+        },
+        sunset: {
+            '--bg-primary': '#fff7ed', '--bg-secondary': '#ffffff', '--bg-sidebar': '#7c2d12',
+            '--text-primary': '#374151', '--text-secondary': '#6b7280', '--text-on-sidebar': '#fed7aa',
+            '--text-on-accent': '#ffffff', '--accent-primary': '#f97316', '--accent-hover': '#ea580c',
+            '--border-color': '#fed7aa', '--shadow-color': 'rgba(0,0,0,0.1)',
+            '--status-completed-bg': '#dcfce7', '--status-completed-text': '#166534',
+            '--status-pending-bg': '#ffedd5', '--status-pending-text': '#9a3412',
+        },
+        navy: {
+            '--bg-primary': '#f8fafc', '--bg-secondary': '#ffffff', '--bg-sidebar': '#ffffff',
+            '--text-primary': '#020617', '--text-secondary': '#334155', '--text-on-sidebar': '#020617',
+            '--text-on-accent': '#ffffff', '--accent-primary': '#1e3a8a', '--accent-hover': '#1e40af',
+            '--border-color': '#e2e8f0', '--shadow-color': 'rgba(0,0,0,0.05)',
+            '--status-completed-bg': '#f0fdf4', '--status-completed-text': '#15803d',
+            '--status-pending-bg': '#fefce8', '--status-pending-text': '#a16207',
+        },
+        mint: {
+            '--bg-primary': '#f0fdfa', '--bg-secondary': '#ffffff', '--bg-sidebar': '#134e4a',
+            '--text-primary': '#1f2937', '--text-secondary': '#374151', '--text-on-sidebar': '#ccfbf1',
+            '--text-on-accent': '#0f172a', '--accent-primary': '#2dd4bf', '--accent-hover': '#14b8a6',
+            '--border-color': '#ccfbf1', '--shadow-color': 'rgba(0,0,0,0.1)',
+            '--status-completed-bg': '#d1fae5', '--status-completed-text': '#065f46',
+            '--status-pending-bg': '#fefce8', '--status-pending-text': '#a16207',
+        }
+    };
+
+    function applyTheme(themeName = 'default') {
+        const theme = themes[themeName] || themes.default;
+        for (const [key, value] of Object.entries(theme)) {
+            document.documentElement.style.setProperty(key, value);
+        }
+    }
+
+
+    // --- FIREBASE & SYNC ---
+    function initializeFirebase() {
+      try {
+        if (typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey) {
+          firebase.initializeApp(firebaseConfig);
+          db = firebase.database();
+          console.log("Firebase initialized.");
+          db.ref('messages').on('value', (snapshot) => {
+              const data = snapshot.val();
+              messages = data ? Object.entries(data).map(([key, val]) => ({...val, id: key })) : [];
+              saveLocalData();
+              updateNotifications();
+              updateTabBadges();
+              // Refresh view if it's open
+              const activeTabId = document.querySelector('.nav-button.active')?.id;
+              if (activeTabId === 'tab-client-chat' && currentChatCustomerMobile) {
+                  selectChatCustomer(currentChatCustomerMobile);
+              } else if (activeTabId === 'tab-online-bookings') {
+                  renderOnlineBookings();
+              }
+          });
+        } else {
+          console.warn("Firebase config not found. App is in offline-only mode.");
+          document.getElementById('sync-button').disabled = true;
+          document.getElementById('sync-text').textContent = 'Offline Mode';
+        }
+      } catch (e) {
+        console.error("Firebase initialization failed:", e);
+        showToast("Firebase connection failed.", 5000);
+      }
+    }
+    
+    async function initialFetchFromCloud() {
+        if (!db) return;
+        showToast('First time setup: Fetching data from cloud...', 4000);
+        const syncBtn = document.getElementById('sync-button');
+        syncBtn.disabled = true;
+        try {
+            const [ordersSnap, customersSnap, todosSnap, remindersSnap, settingsSnap, messagesSnap] = await Promise.all([
+                db.ref('orders').once('value'),
+                db.ref('customers').once('value'),
+                db.ref('marketTodos').once('value'),
+                db.ref('reminders').once('value'),
+                db.ref('settings').once('value'),
+                db.ref('messages').once('value'),
+            ]);
+            orders = Object.values(ordersSnap.val() || {});
+            customerData = Object.values(customersSnap.val() || {});
+            marketTodos = Object.values(todosSnap.val() || {});
+            reminders = Object.values(remindersSnap.val() || {});
+            settings = settingsSnap.val() || {};
+            const messagesData = messagesSnap.val() || {};
+            messages = Object.entries(messagesData).map(([id, val]) => ({...val, id}));
+
+            saveLocalData();
+            loadData(); // Re-run to normalize
+            renderDashboard();
+            showToast('Data successfully downloaded from cloud!');
+        } catch (e) {
+            console.error("Initial fetch failed:", e);
+            showToast('Could not fetch data from cloud.', 5000);
+        } finally {
+            syncBtn.disabled = false;
+        }
+    }
+
+    async function syncData() {
+        if (!db) {
+            showToast("Firebase not connected. Cannot sync.", 4000);
+            return;
+        }
+        const syncBtn = document.getElementById('sync-button');
+        const syncText = document.getElementById('sync-text');
+        const syncIcon = document.getElementById('sync-icon');
+
+        syncBtn.disabled = true;
+        syncText.textContent = 'Syncing...';
+        syncIcon.classList.add('animate-spin');
+
+        try {
+            const [ordersSnap, customersSnap, todosSnap, remindersSnap, settingsSnap, messagesSnap] = await Promise.all([
+                db.ref('orders').once('value'),
+                db.ref('customers').once('value'),
+                db.ref('marketTodos').once('value'),
+                db.ref('reminders').once('value'),
+                db.ref('settings').once('value'),
+                db.ref('messages').once('value'),
+            ]);
+            
+            const remoteData = {
+                orders: Object.values(ordersSnap.val() || {}),
+                customers: Object.values(customersSnap.val() || {}),
+                marketTodos: Object.values(todosSnap.val() || {}),
+                reminders: Object.values(remindersSnap.val() || {}),
+                settings: settingsSnap.val() || {},
+                messages: Object.entries(messagesSnap.val() || {}).map(([id, val]) => ({...val, id})),
+            };
+            
+            const merge = (local, remote) => {
+                const combined = {};
+                (local || []).forEach(item => { if (item && item.id) combined[item.id] = item; });
+                (remote || []).forEach(item => {
+                    if (!item || !item.id) return;
+                    if (!combined[item.id] || new Date(item.lastUpdated) > new Date(combined[item.id].lastUpdated)) {
+                        combined[item.id] = item;
+                    }
+                });
+                return Object.values(combined);
+            };
+
+            orders = merge(orders, remoteData.orders);
+            customerData = merge(customerData, remoteData.customers);
+            marketTodos = merge(marketTodos, remoteData.marketTodos);
+            reminders = merge(reminders, remoteData.reminders);
+            messages = merge(messages, remoteData.messages);
+            settings = remoteData.settings; // Settings are overwritten from remote
+
+            await Promise.all([
+              db.ref('orders').set(orders.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+              db.ref('customers').set(customerData.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+              db.ref('marketTodos').set(marketTodos.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+              db.ref('reminders').set(reminders.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+              db.ref('settings').set(settings),
+              db.ref('messages').set(messages.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+            ]);
+            
+            saveLocalData();
+            loadData();
+
+            syncText.textContent = 'Synced!';
+            syncBtn.classList.add('bg-green-500');
+            showToast("Data synced successfully with the cloud!");
+            setTimeout(() => {
+                syncText.textContent = 'Sync with Cloud';
+                syncBtn.classList.remove('bg-green-500');
+            }, 3000);
+        } catch (error) {
+            console.error("Sync failed:", error);
+            showToast("Sync failed. Check connection.", 5000);
+            syncText.textContent = 'Sync Failed';
+            syncBtn.classList.add('bg-red-500');
+             setTimeout(() => {
+                syncText.textContent = 'Sync with Cloud';
+                syncBtn.classList.remove('bg-red-500');
+            }, 5000);
+        } finally {
+            syncBtn.disabled = false;
+            syncIcon.classList.remove('animate-spin');
+            const activeTab = document.querySelector('.nav-button.active')?.id.replace('tab-','');
+            if (tabs[activeTab]) tabs[activeTab](); else renderDashboard();
+        }
+    }
+
+
+    /**
+     * Converts an image file to a Base64 Data URL.
+     * Bypasses the need for Firebase Storage.
+     * @param {File} file The image file to convert.
+     * @returns {Promise<string|null>} A promise that resolves with the Data URL or null.
+     */
+    function imageToDataUrl(file) {
+        if (!file) {
+            return Promise.resolve(null);
+        }
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (error) => {
+                console.error("Image reading failed:", error);
+                showToast("Failed to process image file.", 4000);
+                reject(error);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+
+    // UTILITIES
+    function showToast(message, ms = 3000) {
+      const t = document.getElementById('toast');
+      const m = document.getElementById('toast-message');
+      m.textContent = message;
+      t.classList.remove('hidden');
+      t.style.opacity = '1';
+      clearTimeout(t._hideTimeout);
+      t._hideTimeout = setTimeout(() => {
+        t.style.opacity = '0';
+        t._hideTimeout2 = setTimeout(()=> t.classList.add('hidden'), 250);
+      }, ms);
+    }
+
+    // Confirmation modal
+    let confirmationCallback = null;
+    document.getElementById('confirm-yes').addEventListener('click', ()=>{
+      if (confirmationCallback) confirmationCallback(true);
+      confirmationCallback = null;
+      document.getElementById('confirmation-modal').classList.add('hidden-modal');
+    });
+    document.getElementById('confirm-no').addEventListener('click', ()=>{
+      if (confirmationCallback) confirmationCallback(false);
+      confirmationCallback = null;
+      document.getElementById('confirmation-modal').classList.add('hidden-modal');
+    });
+    function showConfirmation(message, callback) {
+      document.getElementById('modal-message').textContent = message;
+      confirmationCallback = callback;
+      document.getElementById('confirmation-modal').classList.remove('hidden-modal');
+    }
+
+    // Persistence
+    function saveLocalData() {
+      localStorage.setItem('tailorOrders', JSON.stringify(orders));
+      localStorage.setItem('tailorMarketTodos', JSON.stringify(marketTodos));
+      localStorage.setItem('tailorReminders', JSON.stringify(reminders));
+      localStorage.setItem('tailorCustomerData', JSON.stringify(customerData));
+      localStorage.setItem('tailorMessages', JSON.stringify(messages));
+      localStorage.setItem('tailorSettings', JSON.stringify(settings));
+    }
+    function loadData() {
+      orders = JSON.parse(localStorage.getItem('tailorOrders')) || [];
+      marketTodos = JSON.parse(localStorage.getItem('tailorMarketTodos')) || [];
+      reminders = JSON.parse(localStorage.getItem('tailorReminders')) || [];
+      customerData = JSON.parse(localStorage.getItem('tailorCustomerData')) || [];
+      messages = JSON.parse(localStorage.getItem('tailorMessages')) || [];
+      settings = JSON.parse(localStorage.getItem('tailorSettings')) || {};
+
+      applyTheme(settings.theme);
+
+      // Normalize payments & receivedPayment; keep any existing completedDate
+      orders.forEach(o => {
+        o.lastUpdated = o.lastUpdated || new Date().toISOString();
+        if (!Array.isArray(o.payments)) o.payments = [];
+        if (o.payments.length === 0 && typeof o.receivedPayment === 'number' && o.receivedPayment > 0) {
+          const dt = o.bookingDate || new Date().toISOString();
+          o.payments = [{ id: new Date(dt).getTime(), amount: o.receivedPayment, date: dt, mode: 'Cash' }];
+        }
+        o.payments.forEach((p, i) => {
+            if (!p.id) p.id = new Date(p.date).getTime() + i;
+            if (!p.mode) p.mode = 'Cash';
+        });
+
+        o.receivedPayment = o.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        let totalCharges = 0;
+        if (o.type === 'stitching') totalCharges = o.items ? o.items.reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : 0;
+        else totalCharges = parseFloat(o.charges) || 0;
+        o.paymentReceived = (o.receivedPayment >= totalCharges);
+      });
+
+      customerData.forEach(c => c.lastUpdated = c.lastUpdated || new Date().toISOString());
+      marketTodos.forEach(t => t.lastUpdated = t.lastUpdated || new Date().toISOString());
+      reminders.forEach(r => r.lastUpdated = r.lastUpdated || new Date().toISOString());
+      updateTabBadges();
+    }
+
+    // NAV & tab routing
+    const tabs = {
+      dashboard: renderDashboard,
+      "order-entry": renderOrderEntry,
+      alterations: renderAlterations,
+      ledger: renderLedger,
+      payments: renderPayments,
+      "client-chat": renderClientChat,
+      "online-bookings": renderOnlineBookings,
+      "market-todo": renderMarketTodo,
+      reminders: renderReminders,
+      customers: renderCustomerProfiles,
+      settings: renderSettings,
+      "backup-restore": renderBackupRestore,
+    };
+
+    function setActiveTab(id) {
+      document.querySelectorAll('.nav-button').forEach(btn=>{
+        const bid = btn.id.replace('tab-', '');
+        if (bid === id) {
+          btn.classList.add('active');
+          btn.setAttribute('aria-pressed', 'true');
+        } else {
+          btn.classList.remove('active');
+          btn.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
+
+    document.querySelectorAll('.nav-button').forEach(btn=>{
+      if (btn.tagName.toLowerCase() !== 'a' && btn.id !== 'sync-button') {
+        btn.addEventListener('click', () => {
+          const tab = btn.id.replace('tab-', '');
+          setActiveTab(tab);
+          const fn = tabs[tab];
+          if (typeof fn === 'function') fn();
+        });
+      }
+    });
+
+    // Helpers
+    function formatDateLocal(isoDate) {
+      if(!isoDate) return 'N/A';
+      const d = new Date(isoDate);
+      if (isNaN(d)) return isoDate;
+      return d.toLocaleDateString();
+    }
+
+    function getMeasurementsFormHtml(measurements = {}) {
+      return `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Chest (C)</label>
+            <input type="number" name="chest" class="mt-1 form-input" value="${measurements.chest || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Waist (W)</label>
+            <input type="number" name="waist" class="mt-1 form-input" value="${measurements.waist || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Pate / Thigh (T)</label>
+            <input type="number" name="pate" class="mt-1 form-input" value="${measurements.pate || measurements.thigh || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Hips (H)</label>
+            <input type="number" name="hips" class="mt-1 form-input" value="${measurements.hips || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Sleeve Length (L)</label>
+            <input type="number" name="sleeveLength" class="mt-1 form-input" value="${measurements.sleeveLength || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Sleeve Mouth (M)</label>
+            <input type="number" name="sleeveMouth" class="mt-1 form-input" value="${measurements.sleeveMouth || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Neck Front (F)</label>
+            <input type="number" name="neckFront" class="mt-1 form-input" value="${measurements.neckFront || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Neck Back (B)</label>
+            <input type="number" name="neckBack" class="mt-1 form-input" value="${measurements.neckBack || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Bottom Length (L)</label>
+            <input type="number" name="bottomSalwarLength" class="mt-1 form-input" value="${measurements.bottomSalwarLength || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Bottom Mouth (M)</label>
+            <input type="number" name="bottomSalwarMouth" class="mt-1 form-input" value="${measurements.bottomSalwarMouth || ''}">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Bottom Waist (W)</label>
+            <input type="number" name="bottomSalwarWaist" class="mt-1 form-input" value="${measurements.bottomSalwarWaist || ''}">
+          </div>
+        </div>
+      `;
+    }
+
+    function isSameLocalDay(aIso, bIso) {
+      if (!aIso || !bIso) return false;
+      const a = new Date(aIso);
+      const b = new Date(bIso);
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function receivePayment(orderId) {
+        if (orderId === undefined || orderId === null) {
+            showToast('Cannot process payment: Invalid order ID.');
+            return;
+        }
+        const idx = orders.findIndex(o => o.id === orderId);
+        if (idx === -1) { showToast('Order not found.'); return; }
+        const order = orders[idx];
+
+        let totalCharges = 0;
+        if (order.type === 'stitching') {
+            totalCharges = order.items ? order.items.reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : 0;
+        } else {
+            totalCharges = parseFloat(order.charges) || 0;
+        }
+        if (!Array.isArray(order.payments)) order.payments = [];
+        const received = order.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        const balance = Math.max(0, totalCharges - received);
+
+        if (balance <= 0) {
+            showToast('No remaining balance to receive.');
+            return;
+        }
+        
+        const modal = document.getElementById('payment-modal');
+        document.getElementById('payment-order-id').value = orderId;
+        const amountInput = document.getElementById('payment-amount');
+        amountInput.value = balance.toFixed(2);
+        amountInput.max = balance.toFixed(2);
+        
+        document.getElementById('payment-modal-title').textContent = `Receive Payment for ${order.orderNumber}`;
+        modal.classList.remove('hidden-modal');
+    }
+
+    // ADVANCED FILTERING LOGIC
+    function getFiltersHtml() {
+        const filters = currentFilters || {};
+        const isOpen = Object.keys(filters).length > 0;
+        return `
+            <details class="bg-gray-50 p-4 rounded-lg mb-6" ${isOpen ? 'open' : ''}>
+                <summary class="font-semibold cursor-pointer">Advanced Filters</summary>
+                <form id="filter-form" class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" novalidate>
+                    <div>
+                        <label for="filter-customer-name" class="block text-sm font-medium text-gray-700">Customer Name</label>
+                        <input type="text" id="filter-customer-name" class="form-input mt-1" value="${filters.customerName || ''}">
+                    </div>
+                    <div>
+                        <label for="filter-start-date" class="block text-sm font-medium text-gray-700">From Date</label>
+                        <input type="date" id="filter-start-date" class="form-input mt-1" value="${filters.startDate || ''}">
+                    </div>
+                    <div>
+                        <label for="filter-end-date" class="block text-sm font-medium text-gray-700">To Date</label>
+                        <input type="date" id="filter-end-date" class="form-input mt-1" value="${filters.endDate || ''}">
+                    </div>
+                    <div>
+                        <label for="filter-order-status" class="block text-sm font-medium text-gray-700">Order Status</label>
+                        <select id="filter-order-status" class="form-select mt-1">
+                            <option value="all" ${!filters.orderStatus || filters.orderStatus === 'all' ? 'selected' : ''}>All</option>
+                            <option value="Pending" ${filters.orderStatus === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="Completed" ${filters.orderStatus === 'Completed' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="filter-payment-status" class="block text-sm font-medium text-gray-700">Payment Status</label>
+                        <select id="filter-payment-status" class="form-select mt-1">
+                            <option value="all" ${!filters.paymentStatus || filters.paymentStatus === 'all' ? 'selected' : ''}>All</option>
+                            <option value="received" ${filters.paymentStatus === 'received' ? 'selected' : ''}>Received</option>
+                            <option value="pending" ${filters.paymentStatus === 'pending' ? 'selected' : ''}>Pending</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end col-start-1 md:col-start-auto space-x-2">
+                        <button type="submit" class="bg-indigo-600 text-white py-2 px-4 rounded-lg">Apply Filters</button>
+                        <button type="button" id="clear-filters-btn" class="bg-gray-300 text-gray-800 py-2 px-4 rounded-lg">Clear</button>
+                    </div>
+                </form>
+            </details>
+        `;
+    }
+
+    function getFilteredOrders() {
+        const filters = currentFilters || {};
+        if (Object.keys(filters).length === 0) return orders;
+
+        return orders.filter(order => {
+            if (filters.customerName && (!order.customerName || !order.customerName.toLowerCase().includes(filters.customerName.toLowerCase()))) {
+                return false;
+            }
+            if (filters.startDate) {
+                const orderDate = new Date(order.bookingDate);
+                const startDate = new Date(filters.startDate);
+                startDate.setHours(0, 0, 0, 0);
+                if (orderDate < startDate) return false;
+            }
+            if (filters.endDate) {
+                const orderDate = new Date(order.bookingDate);
+                const endDate = new Date(filters.endDate);
+                endDate.setHours(23, 59, 59, 999);
+                if (orderDate > endDate) return false;
+            }
+            if (filters.orderStatus && filters.orderStatus !== 'all') {
+                if ((order.status || 'Pending') !== filters.orderStatus) return false;
+            }
+            if (filters.paymentStatus && filters.paymentStatus !== 'all') {
+                const totalCharges = order.type === 'stitching' ? (order.items ? order.items.reduce((s,i)=>s + (parseFloat(i.charges)||0), 0) : 0) : (parseFloat(order.charges)||0);
+                const received = order.receivedPayment || 0;
+                const balance = totalCharges - received;
+                if (filters.paymentStatus === 'received') { if (balance > 0.01 || totalCharges === 0) return false; }
+                if (filters.paymentStatus === 'pending') { if (balance <= 0.01) return false; }
+            }
+            return true;
+        });
+    }
+
+    // ORDERS TABLE used by dashboard & ledger
+    function renderOrdersTable(presetFilter) {
+      let ttitle;
+
+      if (presetFilter) {
+          currentFilters = {};
+          if (presetFilter === 'completed') currentFilters.orderStatus = 'Completed';
+          else if (presetFilter === 'pending') currentFilters.orderStatus = 'Pending';
+          else if (presetFilter === 'outstanding') currentFilters.paymentStatus = 'pending';
+      }
+
+      if (currentFilters.orderStatus === 'Completed') ttitle = 'Completed Orders';
+      else if (currentFilters.orderStatus === 'Pending') ttitle = 'Pending Orders';
+      else if (currentFilters.paymentStatus === 'pending') ttitle = 'Orders with Outstanding Balance';
+      else ttitle = 'Filtered Orders';
+      if (Object.keys(currentFilters).length === 0) ttitle = 'All Orders';
+
+      let html = `
+        <h2 class="text-2xl font-bold mb-6">${ttitle}</h2>
+        <button onclick="currentFilters={}; renderDashboard()" class="mb-4 text-indigo-600 hover:underline">&#8592; Back to Dashboard</button>
+        ${getFiltersHtml()}
+        <div class="overflow-x-auto bg-white p-6 rounded-xl shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200" role="table" aria-label="${ttitle}">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items / Description</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Charges</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Received</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pickup</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+      `;
+      const filteredOrders = getFilteredOrders();
+      html += filteredOrders.length > 0 ? filteredOrders.map(order => {
+        const totalCharges = order.type === 'stitching' ? (order.items ? order.items.reduce((s,i)=>s + (parseFloat(i.charges)||0), 0) : 0) : (parseFloat(order.charges)||0);
+        const received = order.receivedPayment || 0;
+        const balance = Math.max(0, totalCharges - received);
+        const itemsList = order.type === 'stitching' ? (order.items ? order.items.map(i=>i.item || '-').join(', ') : '-') : (order.description || '-');
+        const pickupDate = order.type === 'stitching' ? (order.items && order.items.length > 0 ? order.items[0].pickupDate : 'N/A') : (order.pickupDate || 'N/A');
+        const statusText = order.status || 'Pending';
+        const statusClass = statusText === 'Completed' ? 'status-completed' : 'status-pending';
+        const paymentClass = balance < 0.01 ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
+        const paymentButtonHtml = balance > 0 ? `<button onclick="receivePayment(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1 underline">Receive</button>` : '';
+        const reminderButtonHtml = balance > 0 ? `<button onclick="sendPaymentReminder('${order.customerMobile}', '${order.orderNumber}')" class="text-yellow-600 hover:text-yellow-900 mx-1">Remind</button>` : '';
+        const toggleButton = statusText === 'Pending' ? `<button onclick="toggleStatus(${order.id})" class="text-green-600 hover:text-green-900 mx-1">Mark Complete</button>` : `<button onclick="toggleStatus(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1">Mark as Pending</button>`;
+        const hasImages = order.type === 'stitching' && order.items && order.items.some(item => item.designImageUrls && item.designImageUrls.length > 0);
+        const viewDesignsBtn = hasImages ? `<button onclick="viewDesigns(${order.id})" class="text-teal-600 hover:text-teal-900 mx-1">Designs</button>` : '';
+        return `
+          <tr>
+            <td class="px-6 py-4">${order.orderNumber}</td>
+            <td class="px-6 py-4">${order.customerName}</td>
+            <td class="px-6 py-4">${itemsList}</td>
+            <td class="px-6 py-4">₹${totalCharges.toFixed(2)}</td>
+            <td class="px-6 py-4">₹${received.toFixed(2)}</td>
+            <td class="px-6 py-4">${pickupDate}</td>
+            <td class="px-6 py-4"><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td class="px-6 py-4"><span class="status-badge ${paymentClass}">${balance < 0.01 ? 'Received' : 'Pending'}</span></td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              <button onclick="downloadOrderBill(${order.id})" class="text-gray-600 hover:text-gray-900 mx-1">Bill</button>
+              <button onclick="editOrder(${order.id})" class="text-indigo-600 hover:text-indigo-900 mx-1">Edit</button>
+              ${viewDesignsBtn}
+              <button onclick="deleteOrder(${order.id})" class="text-red-600 hover:text-red-900 mx-1">Del</button>
+              ${paymentButtonHtml}
+              ${reminderButtonHtml}
+              ${toggleButton}
+            </td>
+          </tr>
+        `;
+      }).join('') : `<tr><td colspan="9" class="text-center py-6 text-gray-500">No orders match the current filters.</td></tr>`;
+      html += `</tbody></table></div>`;
+      document.getElementById('app-content').innerHTML = html;
+
+      // Attach form handlers
+      document.getElementById('filter-form').addEventListener('submit', e => {
+          e.preventDefault();
+          currentFilters = {
+              customerName: document.getElementById('filter-customer-name').value.trim(),
+              startDate: document.getElementById('filter-start-date').value,
+              endDate: document.getElementById('filter-end-date').value,
+              orderStatus: document.getElementById('filter-order-status').value,
+              paymentStatus: document.getElementById('filter-payment-status').value,
+          };
+          Object.keys(currentFilters).forEach(key => { if (!currentFilters[key] || currentFilters[key] === 'all') delete currentFilters[key]; });
+          renderOrdersTable();
+      });
+      document.getElementById('clear-filters-btn').addEventListener('click', () => {
+          currentFilters = {};
+          renderOrdersTable();
+      });
+    }
+
+    // DASHBOARD
+    function renderDashboard() {
+      const completed = orders.filter(o => o.status === 'Completed').length;
+      const pending = orders.filter(o => o.status !== 'Completed').length;
+      const total = orders.length;
+      
+      const outstandingBalance = orders.reduce((total, order) => {
+        const totalCharges = order.type === 'stitching' ? (order.items ? order.items.reduce((s,i)=> s + (parseFloat(i.charges)||0), 0) : 0) : (parseFloat(order.charges)||0);
+        const received = order.receivedPayment || 0;
+        const balance = Math.max(0, totalCharges - received);
+        return total + balance;
+      }, 0);
+
+      const todayIso = new Date().toISOString();
+      const todayIncome = orders.reduce((sum, o) => {
+        if (!Array.isArray(o.payments)) return sum;
+        const paymentsToday = o.payments.filter(p => isSameLocalDay(p.date, todayIso));
+        return sum + paymentsToday.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+      }, 0);
+
+      document.getElementById('app-content').innerHTML = `
+        <div class="flex items-center justify-between mb-6 dashboard-header">
+          <div>
+            <h2 class="text-2xl font-bold">Dashboard</h2>
+            <p class="text-sm text-gray-500">Overview & quick actions</p>
+          </div>
+          <div class="flex gap-4 items-center w-full md:w-auto">
+            <input id="global-search-input" type="search" placeholder="Search orders, customers, todos..." class="form-input" style="min-width:360px">
+            <div id="notification-bell-container" class="relative">
+              <button id="notification-bell" aria-label="Show notifications" class="p-2 rounded-full hover:bg-gray-200 relative">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
+                <span id="notification-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden"></span>
+              </button>
+              <div id="notification-dropdown" class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl p-2 hidden z-10 border max-h-96 overflow-y-auto"></div>
+            </div>
+            <button id="generate-report-btn" class="px-3 py-2 bg-indigo-600 text-white rounded-lg whitespace-nowrap">Today's Report</button>
+          </div>
+        </div>
+
+        <div id="search-results-container" class="mb-6"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 dashboard-grid">
+          <a href="#" onclick="renderOrdersTable('all');return false;" class="bg-indigo-100 p-6 rounded-xl shadow-sm text-center cursor-pointer hover:bg-indigo-200 transition-colors" role="link" tabindex="0">
+            <h3 class="text-lg font-semibold text-indigo-700">Total Orders</h3>
+            <p class="text-3xl font-bold text-indigo-800 mt-2">${total}</p>
+          </a>
+          <a href="#" onclick="renderOrdersTable('completed');return false;" class="bg-green-100 p-6 rounded-xl shadow-sm text-center cursor-pointer hover:bg-green-200 transition-colors">
+            <h3 class="text-lg font-semibold text-green-700">Completed Orders</h3>
+            <p class="text-3xl font-bold text-green-800 mt-2">${completed}</p>
+          </a>
+          <a href="#" onclick="renderOrdersTable('pending');return false;" class="bg-yellow-100 p-6 rounded-xl shadow-sm text-center cursor-pointer hover:bg-yellow-200 transition-colors">
+            <h3 class="text-lg font-semibold text-yellow-700">Pending Orders</h3>
+            <p class="text-3xl font-bold text-yellow-800 mt-2">${pending}</p>
+          </a>
+          <a href="#" onclick="renderOrdersTable('outstanding');return false;" class="bg-red-100 p-6 rounded-xl shadow-sm text-center cursor-pointer hover:bg-red-200 transition-colors">
+            <h3 class="text-lg font-semibold text-red-700">Outstanding Balance</h3>
+            <p class="text-3xl font-bold text-red-800 mt-2">₹${outstandingBalance.toFixed(2)}</p>
+          </a>
+        </div>
+        <div class="grid grid-cols-1 gap-6 mt-8">
+          <div class="bg-blue-50 p-6 rounded-xl shadow-sm text-center">
+            <h3 class="text-lg font-semibold text-blue-700">Today's Income</h3>
+            <p class="text-4xl font-bold text-blue-800 mt-2">₹${todayIncome.toFixed(2)}</p>
+          </div>
+        </div>
+      `;
+
+      const searchInput = document.getElementById('global-search-input');
+      const resultsContainer = document.getElementById('search-results-container');
+      const generateBtn = document.getElementById('generate-report-btn');
+
+      let debounceTimer;
+      searchInput.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const q = searchInput.value.trim();
+          if (!q) { resultsContainer.innerHTML = ''; return; }
+          const res = globalSearch(q);
+          resultsContainer.innerHTML = renderSearchResultsHtml(res, q);
+          attachSearchResultHandlers();
+        }, 250);
+      });
+
+      generateBtn.addEventListener('click', () => { showDailyReport(true); });
+      searchInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          const first = resultsContainer.querySelector('.search-result-item');
+          if (first) first.click();
+        }
+      });
+      updateNotifications();
+
+      const bell = document.getElementById('notification-bell');
+      const dropdown = document.getElementById('notification-dropdown');
+      bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('hidden');
+      });
+      document.addEventListener('click', (e) => {
+        if (!bell.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    // NOTIFICATIONS
+    function updateTabBadges() {
+        // Online Bookings Badge
+        const bookingBadge = document.getElementById('online-booking-badge');
+        if (bookingBadge) {
+            const unreadBookings = (messages || []).filter(m => m.type === 'online_booking' && !m.isRead).length;
+            if (unreadBookings > 0) {
+                bookingBadge.textContent = unreadBookings;
+                bookingBadge.classList.remove('hidden');
+            } else {
+                bookingBadge.classList.add('hidden');
+            }
+        }
+    }
+    
+    function updateNotifications() {
+        const badge = document.getElementById('notification-badge');
+        const dropdown = document.getElementById('notification-dropdown');
+        if (!badge || !dropdown) return;
+
+        const now = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(now.getDate() + 1);
+        
+        const upcomingReminders = reminders.filter(r => {
+            if (r.completed) return false;
+            const reminderDate = new Date(r.date);
+            return reminderDate >= now && reminderDate <= tomorrow;
+        }).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        const unreadMessages = (messages || []).filter(m => m.sender === 'client' && !m.isRead && (m.type === 'chat' || m.type === 'payment' || m.type === 'appointment_request' || m.type === 'image' )).sort((a,b) => b.timestamp - a.timestamp);
+
+        const count = upcomingReminders.length + unreadMessages.length;
+        if (count > 0) {
+            badge.textContent = count;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+
+        let dropdownHtml = '';
+        if (unreadMessages.length > 0) {
+             dropdownHtml += `<h4 class="font-semibold mb-2 text-gray-800 px-2">New Messages</h4><div class="space-y-1">` + unreadMessages.map(m => {
+                let contentHtml;
+                if (m.type === 'payment') {
+                    let viewButtonHtml = '';
+                    const imgSrc = m.imageDataUrl;
+                    if (imgSrc) {
+                        window.messageImageCache[m.id] = imgSrc;
+                        viewButtonHtml = `<div class="mt-1"><button onclick="viewPaymentProof(window.messageImageCache['${m.id}'])" class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">View Screenshot</button></div>`;
+                    }
+                    contentHtml = `
+                    <p class="font-medium">Payment proof from ${escapeHtml(m.customerName)}</p>
+                    <p class="text-xs text-gray-600">${escapeHtml(m.text)}</p>
+                    ${viewButtonHtml}`;
+                } else if (m.type === 'appointment_request') {
+                     contentHtml = `<p class="font-medium">Appointment Request</p><p class="text-xs text-gray-600">${escapeHtml(m.text)}</p>`;
+                } else {
+                    contentHtml = `<p class="font-medium">Msg from ${escapeHtml(m.customerName)}</p><p class="text-xs text-gray-600">${escapeHtml(m.text)}</p>`;
+                }
+                return `<div class="text-sm p-2 bg-blue-50 rounded-md">
+                            ${contentHtml}
+                            <div class="flex justify-between items-center mt-1">
+                                <p class="text-xs text-gray-500">${new Date(m.timestamp).toLocaleString()}</p>
+                                <button onclick="markMessageAsRead('${m.id}')" class="text-xs text-gray-500 hover:underline">Mark as read</button>
+                            </div>
+                        </div>`;
+            }).join('') + `</div><hr class="my-2">`;
+        }
+
+        if (upcomingReminders.length > 0) {
+            dropdownHtml += `<h4 class="font-semibold mb-2 text-gray-800 px-2">Upcoming Reminders</h4><div class="space-y-1">` + upcomingReminders.map(r => {
+                return `<div class="text-sm p-2 bg-gray-50 rounded-md">
+                            <p class="font-medium">${escapeHtml(r.text)}</p>
+                            <p class="text-xs text-gray-500">${new Date(r.date).toLocaleString()}</p>
+                        </div>`;
+            }).join('') + `</div>`;
+        }
+        
+        if (!dropdownHtml) {
+            dropdownHtml += `<p class="text-sm text-gray-500 text-center py-4">No new notifications.</p>`;
+        }
+        dropdown.innerHTML = dropdownHtml;
+    }
+
+    async function createClientNotification(mobile, title, message, type, orderNumber = null) {
+        if (!db || !mobile) return;
+        const payload = {
+            customerMobile: mobile,
+            title,
+            message,
+            type,
+            orderNumber,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            isRead: false
+        };
+        try {
+            await db.ref(`clientNotifications/${mobile}`).push(payload);
+            showToast(`Notification sent to ${mobile}.`);
+        } catch (e) {
+            console.error("Failed to send client notification:", e);
+            showToast("Failed to send notification.", 4000);
+        }
+    }
+
+    function viewPaymentProof(urlOrDataUrl) {
+        document.getElementById('screenshot-image').src = urlOrDataUrl;
+        document.getElementById('screenshot-modal').classList.remove('hidden-modal');
+    }
+
+    function markMessageAsRead(messageId) {
+        if (db) {
+            db.ref(`messages/${messageId}/isRead`).set(true);
+        }
+        const msg = messages.find(m => m.id === messageId);
+        if(msg) msg.isRead = true;
+        saveLocalData();
+        updateNotifications();
+        updateTabBadges();
+        const activeTabId = document.querySelector('.nav-button.active')?.id;
+        if (activeTabId === 'tab-online-bookings') {
+            renderOnlineBookings();
+        }
+    }
+    
+    // GLOBAL SEARCH
+    function globalSearch(query) {
+      const q = query.toLowerCase();
+      const orderMatches = orders.map(o => {
+        const itemsText = o.type === 'stitching' ? (o.items ? o.items.map(i => i.item).join(' ') : '') : (o.description || '');
+        const hay = `${o.orderNumber || ''} ${o.customerName || ''} ${o.customerMobile || ''} ${itemsText} ${o.description || ''}`.toLowerCase();
+        if (hay.includes(q)) return o;
+        return null;
+      }).filter(Boolean);
+      const customerMatches = customerData.filter(c => `${c.name || ''} ${c.mobile || ''} ${c.address || ''}`.toLowerCase().includes(q));
+      const todoMatches = marketTodos.filter(t => (t.item || '').toLowerCase().includes(q));
+      const reminderMatches = reminders.filter(r => (r.text || '').toLowerCase().includes(q));
+      return { orders: orderMatches, customers: customerMatches, todos: todoMatches, reminders: reminderMatches };
+    }
+
+    function renderSearchResultsHtml(results, q) {
+      let html = `<div class="bg-white p-4 rounded-xl shadow-sm mb-4">`;
+      if ((results.orders.length + results.customers.length + results.todos.length + results.reminders.length) === 0) {
+        return `<p class="text-gray-500">No results found for "<span class="search-highlight">${escapeHtml(q)}</span>"</p></div>`;
+      }
+      if (results.orders.length) {
+        html += `<div class="mb-3"><h4 class="font-semibold">Orders (${results.orders.length})</h4><div class="space-y-2 mt-2">`;
+        results.orders.slice(0, 8).forEach(o => {
+          const items = o.type === 'stitching' ? (o.items ? o.items.map(i => i.item).join(', ') : '') : (o.description || '');
+          html += `<div class="p-2 border rounded search-result-item" data-type="order" data-id="${o.id}"><strong>${escapeHtml(o.orderNumber)}</strong> — ${escapeHtml(o.customerName)} (${escapeHtml(o.customerMobile||'')})<div class="text-sm text-gray-600">${escapeHtml(items)}</div></div>`;
+        });
+        html += `</div></div>`;
+      }
+      if (results.customers.length) {
+        html += `<div class="mb-3"><h4 class="font-semibold">Customers (${results.customers.length})</h4><div class="space-y-2 mt-2">`;
+        results.customers.slice(0,8).forEach(c => {
+          html += `<div class="p-2 border rounded search-result-item" data-type="customer" data-id="${c.id}"><strong>${escapeHtml(c.name)}</strong> — ${escapeHtml(c.mobile||'')}</div>`;
+        });
+        html += `</div></div>`;
+      }
+      if (results.todos.length) {
+        html += `<div class="mb-3"><h4 class="font-semibold">Market To-Do (${results.todos.length})</h4><div class="space-y-2 mt-2">`;
+        results.todos.slice(0,8).forEach(t => {
+          html += `<div class="p-2 border rounded search-result-item" data-type="todo" data-id="${t.id}">${escapeHtml(t.item)}</div>`;
+        });
+        html += `</div></div>`;
+      }
+      if (results.reminders.length) {
+        html += `<div class="mb-3"><h4 class="font-semibold">Reminders (${results.reminders.length})</h4><div class="space-y-2 mt-2">`;
+        results.reminders.slice(0,8).forEach(r => {
+          html += `<div class="p-2 border rounded search-result-item" data-type="reminder" data-id="${r.id}">${escapeHtml(r.text)} ${r.date ? '<span class="text-xs text-gray-500">('+escapeHtml(r.date)+')</span>' : ''}</div>`;
+        });
+        html += `</div></div>`;
+      }
+      html += `</div>`;
+      return html;
+    }
+
+    function attachSearchResultHandlers() {
+      document.querySelectorAll('.search-result-item').forEach(node => {
+        node.onclick = () => {
+          const t = node.dataset.type;
+          const id = Number(node.dataset.id);
+          if (t === 'order') editOrder(id);
+          else if (t === 'customer') editCustomer(id);
+          else if (t === 'todo') { setActiveTab('market-todo'); renderMarketTodo(); } 
+          else if (t === 'reminder') { setActiveTab('reminders'); renderReminders(); }
+        };
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    // EDIT ORDER modal
+    function editOrder(orderId) {
+      const order = orders.find(o => o.id === orderId);
+      if (!order) { showToast('Order not found.'); return; }
+      const modal = document.getElementById('edit-order-modal');
+      const body = document.getElementById('edit-modal-body');
+      modal.classList.remove('hidden-modal');
+      document.getElementById('edit-modal-title').textContent = 'Edit Order';
+
+      let formHtml = `
+        <form id="edit-form" class="space-y-4" novalidate>
+          <input type="hidden" id="edit-order-id" value="${order.id}">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Customer Name</label>
+            <input type="text" id="edit-customer-name" class="form-input" value="${order.customerName || ''}" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Mobile Number</label>
+            <input type="tel" id="edit-customer-mobile" class="form-input" value="${order.customerMobile || ''}" required>
+          </div>`;
+
+      if (order.type === 'stitching') {
+        formHtml += `<h4 class="font-semibold mt-4">Items</h4><div id="edit-items-list" class="space-y-3">`;
+        (order.items || []).forEach((item, idx) => {
+          const imagesHtml = (item.designImageUrls || []).map((imgUrl, imgIdx) => `
+            <div class="image-preview">
+                <img src="${imgUrl}" alt="Design preview ${imgIdx + 1}">
+                <div class="delete-img-btn" onclick="deleteDesignImage(${order.id}, ${idx}, ${imgIdx})">✕</div>
+            </div>`).join('');
+          formHtml += `
+            <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+              <label class="block text-xs text-gray-600">Item Name</label>
+              <input type="text" name="item-name" class="form-input mb-2" value="${item.item || ''}">
+              <label class="block text-xs text-gray-600">Charges (₹)</label>
+              <input type="number" name="charges" class="form-input mb-2" value="${item.charges || 0}" step="0.01" min="0">
+              <label class="block text-xs text-gray-600">Pickup Date</label>
+              <input type="date" name="pickupDate" class="form-input mb-2" value="${item.pickupDate || ''}">
+              <label class="block text-xs text-gray-600">Notes</label>
+              <textarea name="notes" class="form-textarea mb-2">${item.notes || ''}</textarea>
+              <div class="mt-2">${getMeasurementsFormHtml(item.measurements || {})}</div>
+              <div class="mt-4">
+                  <label class="block text-sm font-medium">Design Images</label>
+                  <div class="image-preview-container mt-2">${imagesHtml}</div>
+              </div>
+            </div>`;
+        });
+        formHtml += `</div>`;
+      } else {
+        formHtml += `
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Service Description</label>
+            <textarea id="edit-description" class="form-textarea">${order.description || ''}</textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Charges (₹)</label>
+            <input type="number" id="edit-charges" class="form-input" value="${order.charges || 0}" step="0.01" min="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Pickup Date</label>
+            <input type="date" id="edit-pickup-date" class="form-input" value="${order.pickupDate || ''}">
+          </div>`;
+      }
+      formHtml += `
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Status</label>
+          <select id="edit-status" class="form-select">
+            <option value="Pending" ${order.status !== 'Completed' ? 'selected' : ''}>Pending</option>
+            <option value="Completed" ${order.status === 'Completed' ? 'selected' : ''}>Completed</option>
+          </select>
+        </div>
+        <div class="mt-4 border-t pt-4">
+            <h4 class="font-semibold text-gray-800 mb-2">Payment History</h4>
+            <div id="payment-history-list" class="space-y-2 max-h-48 overflow-y-auto">`;
+      if (order.payments && order.payments.length > 0) {
+        order.payments.forEach(p => {
+          formHtml += `
+            <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
+                <div>
+                    <p class="font-semibold">₹${(parseFloat(p.amount) || 0).toFixed(2)} <span class="text-sm font-normal text-gray-600">(${p.mode || 'Cash'})</span></p>
+                    <p class="text-xs text-gray-500">${new Date(p.date).toLocaleString()}</p>
+                </div>
+                <button type="button" onclick="deletePayment(${order.id}, ${p.id})" class="text-red-600 hover:text-red-800 font-semibold py-1 px-2 rounded hover:bg-red-100">Delete</button>
+            </div>`;
+        });
+      } else {
+        formHtml += `<p class="text-gray-500 text-sm">No payments recorded.</p>`;
+      }
+      formHtml += `
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-4">
+          <button type="button" onclick="openCustomNotifyModal('${order.customerMobile}', '${order.orderNumber}')" class="px-4 py-2 bg-yellow-500 text-white rounded-lg">Notify Client</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Save Changes</button>
+          <button type="button" id="edit-cancel" class="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button>
+        </div>
+        </form>`;
+      body.innerHTML = formHtml;
+
+      body.querySelector('#edit-cancel').addEventListener('click', ()=>{
+        modal.classList.add('hidden-modal');
+        const active = document.querySelector('.nav-button.active');
+        if (active) {
+            const t = active.id.replace('tab-', '');
+            if (tabs[t]) tabs[t]();
+        }
+      });
+
+      body.querySelector('#edit-form').addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const id = Number(document.getElementById('edit-order-id').value);
+        const idx = orders.findIndex(o => o.id === id);
+        if (idx === -1) { showToast('Order not found.'); return; }
+        const updated = { ...orders[idx] };
+        const prevStatus = updated.status;
+        updated.customerName = document.getElementById('edit-customer-name').value.trim();
+        updated.customerMobile = document.getElementById('edit-customer-mobile').value.trim();
+        if (!updated.customerName || !updated.customerMobile) { showToast('Customer name and mobile are required.'); return; }
+
+        if (updated.type === 'stitching') {
+          updated.items = Array.from(document.querySelectorAll('#edit-items-list > div')).map((itemDiv, itemIndex) => {
+            const measurements = {};
+            itemDiv.querySelectorAll('input[type="number"]').forEach(inp => { if (inp.name) measurements[inp.name] = inp.value; });
+            return {
+              ...(updated.items[itemIndex] || {}), // Preserve existing image URLs
+              item: itemDiv.querySelector('[name="item-name"]').value.trim(),
+              charges: parseFloat(itemDiv.querySelector('[name="charges"]').value) || 0,
+              pickupDate: itemDiv.querySelector('[name="pickupDate"]').value,
+              notes: itemDiv.querySelector('[name="notes"]').value.trim(),
+              measurements
+            };
+          });
+        } else {
+          updated.description = document.getElementById('edit-description').value.trim();
+          updated.charges = parseFloat(document.getElementById('edit-charges').value) || 0;
+          updated.pickupDate = document.getElementById('edit-pickup-date').value;
+        }
+        updated.status = document.getElementById('edit-status').value;
+        if (prevStatus !== 'Completed' && updated.status === 'Completed') {
+          updated.completedDate = new Date().toISOString();
+          createClientNotification(updated.customerMobile, 'Order Ready', `Your order #${updated.orderNumber} is ready for pickup.`, 'order_ready', updated.orderNumber);
+        } else if (updated.status !== 'Completed') {
+          delete updated.completedDate;
+        }
+
+        updated.receivedPayment = updated.payments.reduce((s,p)=> s + (parseFloat(p.amount)||0), 0);
+        let totalCharges = updated.type === 'stitching' ? updated.items.reduce((s,i)=> s + (parseFloat(i.charges)||0), 0) : (parseFloat(updated.charges) || 0);
+        updated.paymentReceived = (updated.receivedPayment || 0) >= totalCharges;
+        updated.lastUpdated = new Date().toISOString();
+        
+        orders[idx] = updated;
+        saveLocalData();
+        showToast('Order updated locally!');
+        modal.classList.add('hidden-modal');
+        const active = document.querySelector('.nav-button.active');
+        if (active) {
+          const t = active.id.replace('tab-', '');
+          if (tabs[t]) tabs[t]();
+        } else renderLedger();
+      });
+    }
+
+    // VIEW DESIGNS MODAL
+    function viewDesigns(orderId) {
+        const order = orders.find(o => o.id === orderId);
+        if (!order || order.type !== 'stitching') {
+            showToast('Order not found or not a stitching order.');
+            return;
+        }
+        const allImageUrls = (order.items || []).flatMap(item => item.designImageUrls || []);
+        if (allImageUrls.length === 0) {
+            showToast('No design images available for this order.');
+            return;
+        }
+        const modal = document.getElementById('edit-order-modal');
+        const body = document.getElementById('edit-modal-body');
+        const title = document.getElementById('edit-modal-title');
+
+        title.textContent = `Design Images for Order ${order.orderNumber}`;
+        const imagesHtml = allImageUrls.map(imgSrc => `
+            <div class="p-2 bg-gray-100 rounded-lg">
+                <img src="${imgSrc}" alt="Design Image" class="max-w-full h-auto rounded-lg shadow-md mx-auto" style="max-height: 70vh;">
+            </div>
+        `).join('');
+
+        body.innerHTML = `
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                ${imagesHtml}
+            </div>
+            <div class="flex justify-end mt-6">
+                <button type="button" onclick="document.getElementById('edit-order-modal').classList.add('hidden-modal')" class="px-4 py-2 bg-gray-300 rounded-lg">Close</button>
+            </div>
+        `;
+        modal.classList.remove('hidden-modal');
+    }
+
+    // DELETE DESIGN IMAGE
+    function deleteDesignImage(orderId, itemIndex, imageIndex) {
+        const orderIdx = orders.findIndex(o => o.id === orderId);
+        if (orderIdx === -1) return;
+        const order = orders[orderIdx];
+        if (order.items && order.items[itemIndex] && order.items[itemIndex].designImageUrls) {
+            order.items[itemIndex].designImageUrls.splice(imageIndex, 1);
+            order.lastUpdated = new Date().toISOString();
+            saveLocalData();
+            editOrder(orderId);
+            showToast('Image removed from order.');
+        }
+    }
+
+
+    // DELETE ORDER
+    function deleteOrder(orderId) {
+      showConfirmation('Are you sure you want to delete this order? This action cannot be undone.', confirmed=>{
+        if (!confirmed) return;
+        orders = orders.filter(o => o.id !== orderId);
+        saveLocalData();
+        showToast('Order deleted locally.');
+        const active = document.querySelector('.nav-button.active');
+        if (active) {
+          const t = active.id.replace('tab-', '');
+          if (tabs[t]) tabs[t]();
+        } else renderLedger();
+      });
+    }
+
+    // TOGGLE STATUS (records completedDate)
+    function toggleStatus(orderId) {
+      const idx = orders.findIndex(o => o.id === orderId);
+      if (idx === -1) { showToast('Order not found.'); return; }
+      const o = orders[idx];
+      const prevStatus = o.status;
+      o.status = (o.status === 'Pending') ? 'Completed' : 'Pending';
+      if (prevStatus !== 'Completed' && o.status === 'Completed') {
+        o.completedDate = new Date().toISOString();
+        createClientNotification(o.customerMobile, 'Order Ready', `Your order #${o.orderNumber} is ready for pickup.`, 'order_ready', o.orderNumber);
+      } else if (o.status !== 'Completed') {
+        delete o.completedDate;
+      }
+      o.lastUpdated = new Date().toISOString();
+      saveLocalData();
+      showToast('Order status updated locally.');
+      const activeTab = document.querySelector('.nav-button.active').id.replace('tab-', '');
+      if (tabs[activeTab]) tabs[activeTab](); else renderDashboard();
+    }
+
+    // DELETE PAYMENT
+    function deletePayment(orderId, paymentId) {
+        const orderIndex = orders.findIndex(o => o.id === orderId);
+        if (orderIndex === -1) { showToast('Order not found.'); return; }
+        const order = orders[orderIndex];
+        if (!Array.isArray(order.payments)) { showToast('No payments to delete.'); return; }
+        order.payments = order.payments.filter(p => p.id !== paymentId);
+        
+        order.receivedPayment = order.payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        let totalCharges = order.type === 'stitching' ? (order.items ? order.items.reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : 0) : (parseFloat(order.charges) || 0);
+        order.paymentReceived = (order.receivedPayment >= totalCharges);
+        order.lastUpdated = new Date().toISOString();
+
+        orders[orderIndex] = order;
+        saveLocalData();
+        showToast('Payment deleted locally.');
+        editOrder(orderId);
+    }
+    
+    // CUSTOM NOTIFICATION
+    function openCustomNotifyModal(mobile, orderNumber) {
+        document.getElementById('notify-mobile').value = mobile;
+        document.getElementById('notify-order-number').value = orderNumber;
+        document.getElementById('notify-modal-title').textContent = `Notify Client for #${orderNumber}`;
+        document.getElementById('notify-message').value = '';
+        document.getElementById('notify-modal').classList.remove('hidden-modal');
+    }
+
+    function sendPaymentReminder(mobile, orderNumber) {
+        showConfirmation(`Send a payment reminder for order #${orderNumber}?`, (confirmed) => {
+            if (confirmed) {
+                createClientNotification(mobile, 'Payment Due', `A friendly reminder that payment is due for your order #${orderNumber}.`, 'payment_due', orderNumber);
+            }
+        });
+    }
+
+
+    // CUSTOMER PROFILES
+    function renderCustomerProfiles() {
+      const html = `
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Customer Profiles</h2>
+            <button class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg" onclick="downloadPdf('Customer Profiles')">Download PDF</button>
+        </div>
+        <div class="flex justify-between items-center mb-4">
+          <input type="text" id="customer-profile-search" class="form-input flex-grow mr-2" placeholder="Search by name, mobile, or address..." aria-label="Search Customers">
+          <button id="add-customer-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg">+ Add New</button>
+        </div>
+        <div id="customer-list-container">
+            <div id="customer-list" class="space-y-4" role="list"></div>
+        </div>
+      `;
+      document.getElementById('app-content').innerHTML = html;
+      document.getElementById('add-customer-btn').addEventListener('click', addNewCustomer);
+      const searchInput = document.getElementById('customer-profile-search');
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.toLowerCase();
+        const filtered = customerData.filter(c => (c.name || '').toLowerCase().includes(q) || (c.mobile || '').includes(q) || (c.address || '').toLowerCase().includes(q));
+        displayCustomers(filtered);
+      });
+      displayCustomers(customerData);
+    }
+
+    function displayCustomers(customers) {
+      const list = document.getElementById('customer-list');
+      if (!list) return;
+      if (!customers || customers.length === 0) {
+        list.innerHTML = `<p class="text-center text-gray-500">No customers found.</p>`;
+        return;
+      }
+      list.innerHTML = customers.map(customer=>{
+        const custOrders = orders.filter(o => o.customerMobile === customer.mobile);
+        let totalCharges = 0, totalReceived = 0;
+        custOrders.forEach(o=>{
+          const charges = o.type === 'stitching' ? (o.items ? o.items.reduce((s,i)=> s + (parseFloat(i.charges)||0), 0) : 0) : (parseFloat(o.charges)||0);
+          totalCharges += charges;
+          totalReceived += (o.receivedPayment || 0);
+        });
+        const balance = Math.max(0, totalCharges - totalReceived);
+        const ledgerRows = custOrders.sort((a,b)=> b.id - a.id).map(o=>{
+          const charges = o.type === 'stitching' ? (o.items ? o.items.reduce((s,i)=> s + (parseFloat(i.charges)||0),0) : 0) : (parseFloat(o.charges)||0);
+          const received = o.receivedPayment || 0;
+          const bal = Math.max(0, charges - received);
+          return `
+            <tr>
+              <td>${o.orderNumber}</td>
+              <td>${formatDateLocal(o.bookingDate)}</td>
+              <td>₹${charges.toFixed(2)}</td>
+              <td>₹${received.toFixed(2)}</td>
+              <td>₹${bal.toFixed(2)}</td>
+              <td><span class="status-badge ${o.status==='Completed' ? 'status-completed' : 'status-pending'}">${o.status}</span></td>
+              <td>${bal > 0 ? `<button onclick="receivePayment(${o.id})" class="text-blue-600 hover:text-blue-900 underline text-sm">Receive Payment</button>` : ''}</td>
+            </tr>`;
+        }).join('');
+        return `
+          <div class="bg-white p-6 rounded-xl shadow-sm" role="listitem">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-xl font-bold">${customer.name}</h3>
+              <div class="flex space-x-2">
+                <button onclick="editCustomer(${customer.id})" class="text-indigo-600 hover:text-indigo-900 text-sm">Edit</button>
+                <button onclick="deleteCustomer(${customer.id})" class="text-red-600 hover:text-red-900 text-sm">Delete</button>
+              </div>
+            </div>
+            <p class="text-gray-700"><strong>Mobile:</strong> ${customer.mobile}</p>
+            <p class="text-gray-700"><strong>Address:</strong> ${customer.address || 'N/A'}</p>
+            <div class="mt-4">
+              <h4 class="font-semibold text-gray-800">Measurements:</h4>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm mt-2">
+                ${Object.entries(customer.measurements || {}).map(([k,v])=>`<p><strong class="text-gray-600">${k.replace(/([A-Z])/g,' $1').replace(/^./,s=>s.toUpperCase())}:</strong> ${v || '-'}</p>`).join('')}
+              </div>
+            </div>
+            <div class="mt-6">
+              <h4 class="font-semibold text-gray-900 mb-2">Mini Ledger</h4>
+              <div class="mini-ledger-scroll">
+                <table class="mini-ledger-table w-full text-sm border-collapse" role="table" aria-label="Order ledger for ${customer.name}">
+                  <thead><tr><th>Order ID</th><th>Booking Date</th><th>Charges</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead>
+                  <tbody>${ledgerRows || `<tr><td colspan="7" class="text-center text-gray-500 py-4">No orders found.</td></tr>`}</tbody>
+                  <tfoot class="mini-ledger-summary">
+                    <tr><td colspan="2">Totals</td><td>₹${totalCharges.toFixed(2)}</td><td>₹${totalReceived.toFixed(2)}</td><td>₹${balance.toFixed(2)}</td><td colspan="2"></td></tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // ADD / EDIT / DELETE CUSTOMER
+    function addNewCustomer() { openCustomerModal({ mode: 'add' }); }
+    function editCustomer(customerId) {
+      const customer = customerData.find(c => c.id === customerId);
+      if (!customer) { showToast('Customer not found.'); return; }
+      openCustomerModal({ mode: 'edit', customer });
+    }
+    function openCustomerModal({ mode = 'add', customer = null }) {
+      const modal = document.getElementById('edit-order-modal');
+      const body = document.getElementById('edit-modal-body');
+      modal.classList.remove('hidden-modal');
+      document.getElementById('edit-modal-title').textContent = mode === 'add' ? 'Add New Customer' : `Edit Customer: ${customer.name}`;
+      const measurements = (customer && customer.measurements) ? customer.measurements : {};
+      body.innerHTML = `
+        <form id="customer-form" class="space-y-4" novalidate>
+          ${ mode === 'edit' ? `<input type="hidden" id="customer-id" value="${customer.id}">` : '' }
+          <div><label class="block text-sm font-medium text-gray-700">Name</label><input type="text" id="customer-name" class="form-input" value="${customer ? customer.name : ''}" required></div>
+          <div><label class="block text-sm font-medium text-gray-700">Mobile Number</label><input type="tel" id="customer-mobile" class="form-input" value="${customer ? customer.mobile : ''}" required></div>
+          <div><label class="block text-sm font-medium text-gray-700">Address</label><input type="text" id="customer-address" class="form-input" value="${customer ? (customer.address || '') : ''}"></div>
+          <h4 class="font-semibold mt-4">Measurements</h4>
+          ${getMeasurementsFormHtml(measurements)}
+          <div class="flex justify-end gap-3 mt-4">
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">${ mode === 'add' ? 'Save Customer' : 'Save Changes' }</button>
+            <button type="button" id="customer-cancel" class="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button>
+          </div>
+        </form>`;
+      body.querySelector('#customer-cancel').addEventListener('click', ()=> modal.classList.add('hidden-modal'));
+      body.querySelector('#customer-form').addEventListener('submit', e=>{
+        e.preventDefault();
+        const name = document.getElementById('customer-name').value.trim();
+        const mobile = document.getElementById('customer-mobile').value.trim();
+        if (!name || !mobile) { showToast('Please fill name and mobile number.'); return; }
+        const address = document.getElementById('customer-address').value.trim();
+        const measurementsObj = {};
+        body.querySelectorAll('input[type="number"]').forEach(inp => { if (inp.name) measurementsObj[inp.name] = inp.value; });
+        const now = new Date().toISOString();
+
+        if (mode === 'add') {
+          customerData.push({ id: Date.now(), name, mobile, address, measurements: measurementsObj, lastUpdated: now });
+          showToast('New customer added locally!');
+        } else {
+          const idx = customerData.findIndex(c => c.id === Number(document.getElementById('customer-id').value));
+          if (idx === -1) { showToast('Customer not found.'); return; }
+          customerData[idx] = { ...customerData[idx], name, mobile, address, measurements: measurementsObj, lastUpdated: now };
+          showToast('Customer profile updated locally!');
+        }
+        saveLocalData();
+        modal.classList.add('hidden-modal');
+        renderCustomerProfiles();
+      });
+    }
+    function deleteCustomer(customerId) {
+      showConfirmation('Are you sure you want to delete this customer profile? This also deletes their orders.', confirmed=>{
+        if (!confirmed) return;
+        const toRemove = customerData.find(c => c.id === customerId);
+        if (!toRemove) { showToast('Customer not found.'); return; }
+        customerData = customerData.filter(c => c.id !== customerId);
+        orders = orders.filter(o => o.customerMobile !== toRemove.mobile);
+        saveLocalData();
+        showToast('Customer profile and associated orders deleted locally.');
+        renderCustomerProfiles();
+      });
+    }
+
+    // ONLINE BOOKINGS
+    function renderOnlineBookings() {
+        const bookingMessages = (messages || []).filter(m => m.type === 'online_booking').sort((a,b) => b.timestamp - a.timestamp);
+
+        let html = `<h2 class="text-2xl font-bold mb-6">Online Booking Requests</h2>`;
+        if (bookingMessages.length === 0) {
+            html += `<div class="text-center py-10 bg-white rounded-xl shadow-sm"><p class="text-gray-500">No new online booking requests.</p></div>`;
+        } else {
+            html += `<div class="space-y-4">` + bookingMessages.map(msg => {
+                const details = msg.details || {};
+                return `<div class="bg-white p-6 rounded-xl shadow-sm ${msg.isRead ? 'opacity-70' : ''}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-lg">${escapeHtml(msg.customerName)} <span class="text-sm font-normal text-gray-600">(${escapeHtml(msg.customerMobile)})</span></p>
+                            <p class="text-sm text-gray-500">Received: ${new Date(msg.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div class="flex gap-2">
+                           <button onclick="createOrderFromBooking('${msg.id}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">Create Order</button>
+                           <button onclick="markMessageAsRead('${msg.id}')" class="px-3 py-1 bg-gray-300 text-sm rounded-lg hover:bg-gray-400">${msg.isRead ? 'Read' : 'Mark as Read'}</button>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-4 border-t">
+                        <p><strong>Suit Type:</strong> ${escapeHtml(details.suitType)}</p>
+                        <p class="mt-2"><strong>Message:</strong></p>
+                        <p class="text-gray-700 bg-gray-50 p-2 rounded">${escapeHtml(details.message)}</p>
+                        ${details.designImageDataUrl ? `<div class="mt-4">
+                            <p class="font-semibold">Attached Design:</p>
+                            <a href="${details.designImageDataUrl}" target="_blank" rel="noopener noreferrer">
+                                <img src="${details.designImageDataUrl}" alt="Design" class="mt-2 max-h-48 border rounded-lg shadow-sm cursor-pointer">
+                            </a>
+                        </div>` : ''}
+                    </div>
+                </div>`;
+            }).join('') + `</div>`;
+        }
+        document.getElementById('app-content').innerHTML = html;
+        updateTabBadges();
+    }
+    function createOrderFromBooking(messageId) {
+        const msg = messages.find(m => m.id === messageId);
+        if (!msg || !msg.details) return;
+
+        const bookingData = {
+            customerName: msg.customerName,
+            customerMobile: msg.customerMobile,
+            item: msg.details.suitType,
+            notes: msg.details.message,
+            // Design image is not passed to pre-fill as file inputs cannot be programmatically set.
+            // Tailor should refer to the booking request for the image.
+        };
+        sessionStorage.setItem('prefillOrderData', JSON.stringify(bookingData));
+        
+        markMessageAsRead(messageId);
+        setActiveTab('order-entry');
+        renderOrderEntry();
+    }
+    
+
+    // MARKET TODO
+    function renderMarketTodo() {
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">Market To-Do List</h2>
+        <form id="market-todo-form" class="flex gap-2 mb-6" aria-label="Add To-Do Item">
+          <input type="text" id="todo-item" class="form-input flex-grow" placeholder="Enter item to buy..." required>
+          <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Add</button>
+        </form>
+        <div id="todo-list" class="bg-white p-6 rounded-xl shadow-sm space-y-4">
+          <h3 class="text-lg font-semibold text-gray-800 mb-2">Items to Buy</h3>
+        </div>`;
+      document.getElementById('market-todo-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const item = document.getElementById('todo-item').value.trim();
+        if (!item) { showToast('Please enter an item.'); return; }
+        marketTodos.push({ id: Date.now(), item, completed: false, lastUpdated: new Date().toISOString() });
+        saveLocalData();
+        renderMarketTodo();
+      });
+      const list = document.getElementById('todo-list');
+      const itemsHtml = marketTodos.map(todo => `
+        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+          <span class="${todo.completed ? 'line-through text-gray-400' : ''}">${todo.item}</span>
+          <div class="flex space-x-2">
+            <button onclick="toggleMarketTodo(${todo.id})" class="text-green-500 hover:text-green-700">✓</button>
+            <button onclick="deleteMarketTodo(${todo.id})" class="text-red-500 hover:text-red-700">✕</button>
+          </div>
+        </div>`).join('');
+      list.innerHTML += itemsHtml || `<p class="text-gray-500">No items added.</p>`;
+    }
+    function toggleMarketTodo(id) {
+      const t = marketTodos.find(x => x.id === id);
+      if (t) { t.completed = !t.completed; t.lastUpdated = new Date().toISOString(); saveLocalData(); renderMarketTodo(); }
+    }
+    function deleteMarketTodo(id) { marketTodos = marketTodos.filter(x => x.id !== id); saveLocalData(); renderMarketTodo(); }
+
+    // REMINDERS
+    function renderReminders() {
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">Reminders</h2>
+        <form id="reminder-form" class="space-y-4 mb-6 bg-gray-100 p-6 rounded-xl">
+          <div><label class="block text-sm font-medium text-gray-700">Reminder</label><input type="text" id="reminder-text" class="form-input" required></div>
+          <div><label class="block text-sm font-medium text-gray-700">Date</label><input type="datetime-local" id="reminder-date" class="form-input"></div>
+          <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded-lg">Add Reminder</button>
+        </form>
+        <div id="reminders-list" class="bg-white p-6 rounded-xl shadow-sm space-y-4">
+          <h3 class="text-lg font-semibold text-gray-800 mb-2">Upcoming Reminders</h3>
+        </div>`;
+      document.getElementById('reminder-form').addEventListener('submit', e=>{
+        e.preventDefault();
+        const text = document.getElementById('reminder-text').value.trim();
+        if (!text) { showToast('Please enter reminder text.'); return; }
+        reminders.push({ id: Date.now(), text, date: document.getElementById('reminder-date').value, completed: false, lastUpdated: new Date().toISOString() });
+        saveLocalData();
+        renderReminders();
+        updateNotifications();
+      });
+      const list = document.getElementById('reminders-list');
+      const items = reminders.sort((a,b)=> new Date(a.date||0) - new Date(b.date||0)).map(r => `
+        <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+          <div>
+            <p class="${r.completed ? 'line-through text-gray-400' : ''} font-medium">${r.text}</p>
+            ${r.date ? `<p class="text-sm text-gray-500">Date: ${new Date(r.date).toLocaleString()}</p>` : ''}
+          </div>
+          <div class="flex space-x-2">
+            <button onclick="toggleReminder(${r.id})" class="text-green-500 hover:text-green-700">✓</button>
+            <button onclick="deleteReminder(${r.id})" class="text-red-500 hover:text-red-700">✕</button>
+          </div>
+        </div>`).join('');
+      list.innerHTML += items || `<p class="text-gray-500">No reminders.</p>`;
+    }
+    function toggleReminder(id) {
+      const r = reminders.find(x => x.id === id);
+      if (r) { r.completed = !r.completed; r.lastUpdated = new Date().toISOString(); saveLocalData(); renderReminders(); updateNotifications(); }
+    }
+    function deleteReminder(id) { reminders = reminders.filter(x => x.id !== id); saveLocalData(); renderReminders(); updateNotifications(); }
+
+    // SETTINGS
+    function renderSettings() {
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">Settings</h2>
+        <div class="bg-white p-6 rounded-xl shadow-sm max-w-lg">
+            <form id="settings-form" class="space-y-6">
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Payment Information</h3>
+                    <p class="text-sm text-gray-600 mb-4">This information will be shown to clients in their portal for making payments.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="upi-id" class="block text-sm font-medium text-gray-700">UPI ID</label>
+                            <input type="text" id="upi-id" class="form-input mt-1" value="${settings.upiId || ''}" placeholder="e.g., yourname@oksbi">
+                        </div>
+                        <div>
+                            <label for="qr-code-upload" class="block text-sm font-medium text-gray-700">Upload UPI QR Code Image</label>
+                            <input type="file" id="qr-code-upload" class="form-input mt-1" accept="image/*">
+                             <div id="qr-preview-container" class="mt-2">
+                                ${settings.qrCodeDataUrl ? `<img src="${settings.qrCodeDataUrl}" alt="Current QR Code" class="h-32 w-32 object-contain border rounded-md">` : '<p class="text-xs text-gray-500">No QR code uploaded.</p>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="border-t pt-6">
+                    <h3 class="text-xl font-semibold mb-2">Appearance</h3>
+                    <div>
+                        <label for="app-theme" class="block text-sm font-medium text-gray-700">Application Theme</label>
+                        <select id="app-theme" class="form-select mt-1">
+                            <option value="default" ${settings.theme === 'default' ? 'selected':''}>Default Dark</option>
+                            <option value="light" ${settings.theme === 'light' ? 'selected':''}>Light & Airy</option>
+                            <option value="sunset" ${settings.theme === 'sunset' ? 'selected':''}>Warm Sunset</option>
+                            <option value="navy" ${settings.theme === 'navy' ? 'selected':''}>Classic Professional</option>
+                            <option value="mint" ${settings.theme === 'mint' ? 'selected':''}>Modern Mint</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button type="submit" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg">Save Settings</button>
+                </div>
+            </form>
+        </div>`;
+      
+      let newQrCodeDataUrl = settings.qrCodeDataUrl || null;
+      document.getElementById('qr-code-upload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            newQrCodeDataUrl = event.target.result;
+            const container = document.getElementById('qr-preview-container');
+            container.innerHTML = `<img src="${newQrCodeDataUrl}" alt="QR Code Preview" class="h-32 w-32 object-contain border rounded-md">`;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      const form = document.getElementById('settings-form');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.textContent = 'Saving...';
+        try {
+            const upiId = document.getElementById('upi-id').value.trim();
+            const theme = document.getElementById('app-theme').value;
+            
+            const newSettings = { upiId, qrCodeDataUrl: newQrCodeDataUrl, theme };
+            if (db) {
+                await db.ref('settings').set(newSettings);
+            }
+            settings = newSettings;
+            saveLocalData();
+            applyTheme(settings.theme);
+            showToast('Settings saved successfully!');
+            renderSettings();
+        } catch (error) {
+            console.error("Settings save failed:", error);
+            showToast(error.message || 'Settings save failed. Check connection.', 5000);
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Save Settings';
+        }
+      });
+    }
+
+    // BACKUP / RESTORE
+    function renderBackupRestore() {
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">Backup & Restore</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          
+          <div class="bg-gray-50 p-6 rounded-xl">
+            <h3 class="text-xl font-semibold mb-4">Device Backup (Local File)</h3>
+            <p class="text-sm text-gray-600 mb-4">Save a backup file to your computer or restore from a previously saved file. This does not use the cloud.</p>
+            <div class="space-y-4">
+              <div>
+                <h4 class="font-medium mb-2">1. Export Data to Device</h4>
+                <button id="export-btn" class="bg-indigo-600 text-white py-2 px-4 rounded-lg w-full">Download JSON Backup</button>
+              </div>
+              <div>
+                <h4 class="font-medium mb-2">2. Import Data from Device</h4>
+                <input type="file" id="import-file" accept=".json" class="form-input">
+                <button id="import-btn" class="bg-indigo-600 text-white py-2 px-4 rounded-lg mt-2 w-full">Restore from selected file</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-blue-50 p-6 rounded-xl">
+            <h3 class="text-xl font-semibold mb-4 text-blue-800">Cloud Backup (Firebase)</h3>
+            <p class="text-sm text-gray-600 mb-4">Sync your data with Firebase for a secure online backup. Use the "Sync with Cloud" button in the sidebar for regular updates.</p>
+            <div class="space-y-4">
+              <div>
+                <h4 class="font-medium mb-2">1. Force Upload to Cloud</h4>
+                <button id="force-upload-btn" class="bg-blue-600 text-white py-2 px-4 rounded-lg w-full">Upload All Local Data to Cloud</button>
+                <p class="text-xs text-gray-500 mt-1">This will overwrite cloud data with your local data. Use if your local data is most current.</p>
+              </div>
+              <div>
+                <h4 class="font-medium mb-2">2. Force Download from Cloud</h4>
+                <button id="force-download-btn" class="bg-blue-600 text-white py-2 px-4 rounded-lg w-full">Download All Cloud Data</button>
+                <p class="text-xs text-gray-500 mt-1">This will overwrite your local data with cloud data. Use on a new device or to restore.</p>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      
+      const exportData = () => {
+        const data = { orders, marketTodos, reminders, customerData, settings, messages };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tailor_shop_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Backup downloaded.');
+      };
+
+      const importData = (file) => {
+        if (!file) { showToast('Please select a JSON file to import.'); return; }
+        const reader = new FileReader();
+        reader.onload = e => {
+          try {
+            const imported = JSON.parse(e.target.result);
+            if (imported.orders && imported.marketTodos && imported.reminders && imported.customerData) {
+              orders = imported.orders || [];
+              marketTodos = imported.marketTodos || [];
+              reminders = imported.reminders || [];
+              customerData = imported.customerData || [];
+              settings = imported.settings || {};
+              messages = imported.messages || [];
+              loadData(); // Re-normalize data
+              saveLocalData();
+              showToast('Data restored locally successfully.');
+              setActiveTab('dashboard');
+              renderDashboard();
+            } else { showToast('Invalid backup file format.'); }
+          } catch (err) { showToast('Failed to parse backup file.'); }
+        };
+        reader.readAsText(file);
+      };
+
+      document.getElementById('export-btn').addEventListener('click', exportData);
+      
+      document.getElementById('import-btn').addEventListener('click', ()=>{
+        showConfirmation("This will overwrite all local data. Are you sure?", (confirmed) => {
+            if (confirmed) {
+                const file = document.getElementById('import-file').files[0];
+                importData(file);
+            }
+        });
+      });
+      
+      document.getElementById('force-upload-btn').addEventListener('click', async () => {
+          if (!db) { showToast('Firebase not connected'); return; }
+          showConfirmation("This will overwrite all cloud data with your current local data. Continue?", async (confirmed) => {
+              if (confirmed) {
+                  showToast('Uploading to cloud...', 2000);
+                  await Promise.all([
+                    db.ref('orders').set(orders.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+                    db.ref('customers').set(customerData.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+                    db.ref('marketTodos').set(marketTodos.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+                    db.ref('reminders').set(reminders.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+                    db.ref('settings').set(settings),
+                    db.ref('messages').set(messages.reduce((obj, item) => ({...obj, [item.id]: item}), {})),
+                  ]);
+                  showToast('Cloud data overwritten successfully!');
+              }
+          });
+      });
+
+      document.getElementById('force-download-btn').addEventListener('click', async () => {
+          if (!db) { showToast('Firebase not connected'); return; }
+          showConfirmation("This will overwrite all your local data with data from the cloud. Continue?", async (confirmed) => {
+              if (confirmed) {
+                  showToast('Downloading from cloud...', 2000);
+                  const remoteSnapshot = await db.ref().once('value');
+                  const remoteData = remoteSnapshot.val() || {};
+                  orders = Object.values(remoteData.orders || {});
+                  customerData = Object.values(remoteData.customers || {});
+                  marketTodos = Object.values(remoteData.marketTodos || {});
+                  reminders = Object.values(remoteData.reminders || {});
+                  settings = remoteData.settings || {};
+                  const messagesData = remoteData.messages || {};
+                  messages = Object.entries(messagesData).map(([id, val]) => ({...val, id}));
+                  saveLocalData();
+                  loadData();
+                  showToast('Local data overwritten successfully!');
+                  renderDashboard();
+              }
+          });
+      });
+    }
+
+    // ORDER ENTRY (stitching)
+    function renderOrderEntry() {
+      const now = new Date();
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">New Suit Order Entry</h2>
+        <form id="order-entry-form" class="space-y-4" novalidate>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Customer Name / Mobile No.</label>
+            <input type="text" id="customerSearch" placeholder="e.g., John Doe or 9876543210" class="mt-1 form-input" autocomplete="off">
+          </div>
+          <div id="customer-info-fields" class="space-y-4" aria-live="polite">
+            <div><label class="block text-sm font-medium text-gray-700">Customer Name</label><input type="text" id="customerName" class="mt-1 form-input" required></div>
+            <div><label class="block text-sm font-medium text-gray-700">Mobile Number</label><input type="tel" id="customerMobile" class="mt-1 form-input" required></div>
+            <div><label class="block text-sm font-medium text-gray-700">Address</label><input type="text" id="customerAddress" class="mt-1 form-input"></div>
+          </div>
+          <div id="order-details-container" class="space-y-6 bg-gray-50 p-6 rounded-xl">
+            <h3 class="text-lg font-semibold text-gray-800">Order Details</h3>
+            <p class="text-sm text-gray-600"><strong>Order ID:</strong> ORD-${now.getTime().toString().slice(-6)}</p>
+            <p class="text-sm text-gray-600"><strong>Booking Date & Time:</strong> ${now.toLocaleString()}</p>
+            <div id="sub-orders-list" class="space-y-4"></div>
+            <button type="button" id="add-sub-order-btn" class="w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg">+ Add Another Item</button>
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg">Save Order</button>
+        </form>`;
+      
+      const customerSearchInput = document.getElementById('customerSearch');
+      customerSearchInput.addEventListener('input', () => {
+        const q = customerSearchInput.value.toLowerCase();
+        const found = customerData.find(c => (c.name || '').toLowerCase().includes(q) || (c.mobile || '').includes(q));
+        if (found) {
+          document.getElementById('customerName').value = found.name;
+          document.getElementById('customerMobile').value = found.mobile;
+          document.getElementById('customerAddress').value = found.address || '';
+          document.getElementById('customer-info-fields').dataset.customerId = found.id;
+          fillAllMeasurements(found.measurements || {});
+          showToast('Customer found! Measurements auto-filled.');
+        } else {
+          delete document.getElementById('customer-info-fields').dataset.customerId;
+        }
+      });
+      
+      function addSubOrderForm(measurements = {}) {
+        const list = document.getElementById('sub-orders-list');
+        const newIndex = list.children.length;
+        const subOrderHtml = `
+          <div class="bg-white p-4 rounded-xl shadow-sm sub-order-form">
+            <h4 class="font-semibold mb-2">Item #${newIndex + 1}</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><label class="block text-sm font-medium">Item Name</label><input type="text" name="item-name" class="mt-1 form-input" required placeholder="e.g., Kurta Pajama"></div>
+              <div><label class="block text-sm font-medium">Charges (₹)</label><input type="number" name="charges" class="mt-1 form-input" required min="0" step="0.01"></div>
+              <div><label class="block text-sm font-medium">Pickup Date</label><input type="date" name="pickupDate" class="mt-1 form-input" required></div>
+            </div>
+            <h5 class="text-sm font-medium text-gray-700 mt-4 mb-2">Measurements</h5>
+            ${getMeasurementsFormHtml(measurements)}
+            <div class="mt-4"><label class="block text-sm font-medium">Special Notes</label><textarea name="notes" class="mt-1 form-textarea" placeholder="e.g., Narrow bottom, side slits"></textarea></div>
+            <div class="mt-4">
+              <label class="block text-sm font-medium">Design Images (Max 3)</label>
+              <input type="file" name="designImages" accept="image/*" multiple class="mt-1 form-input" onchange="window.handleImagePreviews(event)">
+              <div class="image-preview-container mt-2"></div>
+            </div>
+            ${ newIndex > 0 ? `<div class="mt-4"><button type="button" onclick="this.closest('.sub-order-form').remove()" class="text-red-500 hover:text-red-700 text-sm">Remove Item</button></div>` : '' }
+          </div>`;
+        list.insertAdjacentHTML('beforeend', subOrderHtml);
+      }
+
+      function fillAllMeasurements(measurements) {
+        const form = document.querySelector('.sub-order-form:last-child');
+        if (!form) return;
+        Object.keys(measurements).forEach(key => {
+            const input = form.querySelector(`input[name="${key}"]`);
+            if (input) input.value = measurements[key];
+        });
+      }
+
+      document.getElementById('add-sub-order-btn').addEventListener('click', ()=> addSubOrderForm({}));
+      addSubOrderForm({});
+
+      const prefillDataJSON = sessionStorage.getItem('prefillOrderData');
+      if (prefillDataJSON) {
+          const prefill = JSON.parse(prefillDataJSON);
+          document.getElementById('customerName').value = prefill.customerName || '';
+          document.getElementById('customerMobile').value = prefill.customerMobile || '';
+          
+          const firstItemForm = document.querySelector('.sub-order-form');
+          if (firstItemForm) {
+              firstItemForm.querySelector('[name="item-name"]').value = prefill.item || '';
+              firstItemForm.querySelector('[name="notes"]').value = prefill.notes || '';
+          }
+          showToast('Order form pre-filled from online booking.');
+          sessionStorage.removeItem('prefillOrderData');
+      }
+      
+      document.getElementById('order-entry-form').addEventListener('submit', async e=>{
+        e.preventDefault();
+        const submitButton = e.target.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.textContent = 'Saving...';
+        
+        const newOrderId = Date.now();
+        const subOrderForms = Array.from(document.querySelectorAll('.sub-order-form'));
+        let subOrders = [];
+        
+        for (const [index, form] of subOrderForms.entries()) {
+            const measurements = {};
+            form.querySelectorAll('input[type="number"]').forEach(input => { if (input.name) measurements[input.name] = input.value; });
+            const fileInput = form.querySelector('[name="designImages"]');
+            const files = Array.from(fileInput.files).slice(0, 3);
+            const designImageUrls = [];
+            for (const file of files) {
+                const url = await imageToDataUrl(file);
+                if(url) designImageUrls.push(url);
+            }
+
+            subOrders.push({ 
+                item: (form.querySelector('[name="item-name"]').value || '').trim(), 
+                charges: parseFloat(form.querySelector('[name="charges"]').value) || 0, 
+                pickupDate: form.querySelector('[name="pickupDate"]').value, 
+                measurements, 
+                notes: (form.querySelector('[name="notes"]').value || '').trim(),
+                designImageUrls
+            });
+        }
+        
+        if (subOrders.length === 0 || subOrders.some(s => !s.item || !s.charges || !s.pickupDate)) {
+          showToast('Please fill all required item fields (name, charges, pickup date).'); 
+          submitButton.disabled = false;
+          submitButton.textContent = 'Save Order';
+          return;
+        }
+
+        const customerName = document.getElementById('customerName').value.trim();
+        const customerMobile = document.getElementById('customerMobile').value.trim();
+        if (!customerName || !customerMobile) { 
+            showToast('Please fill customer name and mobile.'); 
+            submitButton.disabled = false;
+            submitButton.textContent = 'Save Order';
+            return;
+        }
+        const customerAddress = document.getElementById('customerAddress').value.trim();
+        const now = new Date().toISOString();
+        orders.push({
+          id: newOrderId, orderNumber: `ORD-${newOrderId.toString().slice(-6)}`,
+          customerName, customerMobile, customerAddress, bookingDate: now,
+          type: 'stitching', status: 'Pending', paymentReceived: false, 
+          receivedPayment: 0, payments: [], items: subOrders, lastUpdated: now
+        });
+
+        const customerId = document.getElementById('customer-info-fields').dataset.customerId;
+        const customerIdx = customerData.findIndex(c => c.id == customerId);
+        if (customerIdx > -1) {
+            customerData[customerIdx] = {...customerData[customerIdx], name: customerName, mobile: customerMobile, address: customerAddress, measurements: subOrders[0].measurements, lastUpdated: now };
+        } else if (!customerData.some(c => c.mobile === customerMobile)) {
+          customerData.push({ id: Date.now() + 1, name: customerName, mobile: customerMobile, address: customerAddress, measurements: subOrders[0].measurements, lastUpdated: now });
+        }
+        saveLocalData();
+        showToast('Order saved locally!');
+        renderOrderEntry();
+      });
+    }
+
+    // ALTERATIONS
+    function renderAlterations() {
+      document.getElementById('app-content').innerHTML = `
+        <h2 class="text-2xl font-bold mb-6">Alterations & Repairs</h2>
+        <form id="alteration-form" class="space-y-4" novalidate>
+          <div><label class="block text-sm font-medium">Customer Name / Mobile</label><input type="text" id="customerSearchAlt" class="mt-1 form-input"></div>
+          <div class="space-y-4">
+            <div><label class="block text-sm font-medium">Customer Name</label><input type="text" id="customerNameAlt" class="mt-1 form-input" required></div>
+            <div><label class="block text-sm font-medium">Mobile Number</label><input type="tel" id="customerMobileAlt" class="mt-1 form-input" required></div>
+          </div>
+          <div class="space-y-4 bg-gray-50 p-6 rounded-xl">
+            <h3 class="text-lg font-semibold">Service Details</h3>
+            <div><label class="block text-sm font-medium">Description</label><textarea id="descriptionAlt" class="mt-1 form-textarea" required></textarea></div>
+            <div><label class="block text-sm font-medium">Charges (₹)</label><input type="number" id="chargesAlt" class="mt-1 form-input" required min="0" step="0.01"></div>
+            <div><label class="block text-sm font-medium">Pickup Date</label><input type="date" id="pickupDateAlt" class="mt-1 form-input" required></div>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="urgentToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+              <label for="urgentToggle" class="block text-sm font-medium">Urgent Order</label>
+            </div>
+            <div id="pickupTimeContainer" class="hidden">
+              <label class="block text-sm font-medium">Pickup Time</label>
+              <input type="time" id="pickupTimeAlt" class="mt-1 form-input">
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg">Save Service</button>
+        </form>`;
+      
+      document.getElementById('customerSearchAlt').addEventListener('input', ()=>{
+        const val = document.getElementById('customerSearchAlt').value.toLowerCase();
+        const found = customerData.find(c => (c.name || '').toLowerCase().includes(val) || (c.mobile || '').includes(val));
+        if (found) {
+          document.getElementById('customerNameAlt').value = found.name;
+          document.getElementById('customerMobileAlt').value = found.mobile;
+          showToast('Customer found!');
+        }
+      });
+
+      const urgentToggle = document.getElementById('urgentToggle');
+      const pickupDateInput = document.getElementById('pickupDateAlt');
+      const timeContainer = document.getElementById('pickupTimeContainer');
+
+      function checkUrgentVisibility() {
+          const isToday = pickupDateInput.value === new Date().toISOString().slice(0, 10);
+          if (urgentToggle.checked && isToday) {
+              timeContainer.classList.remove('hidden');
+          } else {
+              timeContainer.classList.add('hidden');
+          }
+      }
+      urgentToggle.addEventListener('change', checkUrgentVisibility);
+      pickupDateInput.addEventListener('change', checkUrgentVisibility);
+      
+      document.getElementById('alteration-form').addEventListener('submit', e=>{
+        e.preventDefault();
+        const customerName = document.getElementById('customerNameAlt').value.trim();
+        const customerMobile = document.getElementById('customerMobileAlt').value.trim();
+        if (!customerName || !customerMobile) { showToast('Please fill customer name and mobile.'); return; }
+        const description = document.getElementById('descriptionAlt').value.trim();
+        if (!description) { showToast('Please enter a description.'); return; }
+        
+        const isUrgent = document.getElementById('urgentToggle').checked;
+        const pickupTime = document.getElementById('pickupTimeAlt').value;
+        const pickupDate = document.getElementById('pickupDateAlt').value;
+        const now = new Date().toISOString();
+        const orderNumber = 'ALT-' + Date.now().toString().slice(-6);
+
+        orders.push({
+          id: Date.now(), orderNumber, customerName, customerMobile,
+          bookingDate: now, type: 'alteration', status: 'Pending',
+          description,
+          charges: parseFloat(document.getElementById('chargesAlt').value) || 0,
+          pickupDate, isUrgent, pickupTime,
+          paymentReceived: false, receivedPayment: 0, payments: [],
+          lastUpdated: now
+        });
+
+        if (isUrgent && pickupTime && pickupDate === new Date().toISOString().slice(0, 10)) {
+            const [hours, minutes] = pickupTime.split(':');
+            const reminderDateTime = new Date();
+            reminderDateTime.setHours(hours, minutes, 0, 0);
+            reminderDateTime.setMinutes(reminderDateTime.getMinutes() - 30);
+            reminders.push({
+                id: Date.now() + 1,
+                text: `Reminder: Urgent pickup for ${orderNumber} at ${pickupTime}`,
+                date: reminderDateTime.toISOString(),
+                completed: false,
+                lastUpdated: now
+            });
+            updateNotifications();
+        }
+
+        saveLocalData();
+        showToast('Alteration service saved locally!');
+        renderAlterations();
+      });
+    }
+
+    // LEDGER
+    function renderLedger() {
+      document.getElementById('app-content').innerHTML = `
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Order Ledger</h2>
+            <button class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg" onclick="downloadPdf('Order Ledger')">Download PDF</button>
+        </div>
+        ${getFiltersHtml()}
+        <div class="overflow-x-auto bg-white p-6 rounded-xl shadow-sm">
+          <table id="ledger-table" class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Charges</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booking Date</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Received</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ledger-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+          </table>
+        </div>`;
+      
+      document.getElementById('filter-form').addEventListener('submit', e => {
+          e.preventDefault();
+          currentFilters = {
+              customerName: document.getElementById('filter-customer-name').value.trim(),
+              startDate: document.getElementById('filter-start-date').value,
+              endDate: document.getElementById('filter-end-date').value,
+              orderStatus: document.getElementById('filter-order-status').value,
+              paymentStatus: document.getElementById('filter-payment-status').value,
+          };
+          Object.keys(currentFilters).forEach(key => { if (!currentFilters[key] || currentFilters[key] === 'all') delete currentFilters[key]; });
+          renderLedger();
+      });
+      document.getElementById('clear-filters-btn').addEventListener('click', () => {
+          currentFilters = {};
+          renderLedger();
+      });
+      
+      const body = document.getElementById('ledger-table-body');
+      let grandTotalCharges = 0, grandTotalReceived = 0, grandTotalBalance = 0;
+      const filteredOrders = getFilteredOrders();
+
+      if(filteredOrders.length === 0) {
+        body.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-gray-500">No orders match the current filters.</td></tr>`;
+      } else {
+        filteredOrders.slice().sort((a,b)=> b.id - a.id).forEach(order=>{
+          const totalCharges = order.type === 'stitching' ? (order.items ? order.items.reduce((s,i)=> s + (parseFloat(i.charges)||0), 0) : 0) : (parseFloat(order.charges)||0);
+          const itemsList = order.type === 'stitching' ? (order.items ? order.items.map(i=>i.item || '-').join(', ') : '-') : (order.description || '-');
+          const paymentReceived = order.receivedPayment || 0;
+          const balance = Math.max(0, totalCharges - paymentReceived);
+          grandTotalCharges += totalCharges; grandTotalReceived += paymentReceived; grandTotalBalance += balance;
+          const tr = document.createElement('tr');
+          const hasImages = order.type === 'stitching' && order.items && order.items.some(item => item.designImageUrls && item.designImageUrls.length > 0);
+          const viewDesignsBtn = hasImages ? `<button onclick="viewDesigns(${order.id})" class="text-teal-600 hover:text-teal-900 mx-1">Designs</button>` : '';
+          const reminderButtonHtml = balance > 0 ? `<button onclick="sendPaymentReminder('${order.customerMobile}', '${order.orderNumber}')" class="text-yellow-600 hover:text-yellow-900 mx-1">Remind</button>` : '';
+          tr.innerHTML = `
+            <td class="px-6 py-4">${order.orderNumber}</td><td class="px-6 py-4">${order.customerName}</td>
+            <td class="px-6 py-4">${itemsList}</td><td class="px-6 py-4">₹${totalCharges.toFixed(2)}</td>
+            <td class="px-6 py-4">${formatDateLocal(order.bookingDate)}</td>
+            <td class="px-6 py-4"><span class="status-badge ${order.status === 'Completed' ? 'status-completed' : 'status-pending'}">${order.status}</span></td>
+            <td class="px-6 py-4">₹${paymentReceived.toFixed(2)}</td><td class="px-6 py-4">₹${balance.toFixed(2)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              <button onclick="downloadOrderBill(${order.id})" class="text-gray-600 hover:text-gray-900 mx-1">Bill</button>
+              <button onclick="editOrder(${order.id})" class="text-indigo-600 hover:text-indigo-900 mx-1">Edit</button>
+              ${viewDesignsBtn}
+              <button onclick="deleteOrder(${order.id})" class="text-red-600 hover:text-red-900 mx-1">Del</button>
+              ${ balance > 0 ? `<button onclick="receivePayment(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1 underline">Receive</button>` : '' }
+              ${reminderButtonHtml}
+            </td>`;
+          body.appendChild(tr);
+        });
+      }
+
+      const tfoot = document.createElement('tfoot');
+      tfoot.className = 'bg-gray-100 font-bold';
+      tfoot.innerHTML = `
+          <tr>
+              <td class="px-6 py-4 text-right" colspan="3">Grand Totals</td>
+              <td class="px-6 py-4">₹${grandTotalCharges.toFixed(2)}</td>
+              <td class="px-6 py-4" colspan="2"></td>
+              <td class="px-6 py-4">₹${grandTotalReceived.toFixed(2)}</td>
+              <td class="px-6 py-4">₹${grandTotalBalance.toFixed(2)}</td>
+              <td class="px-6 py-4 no-print"></td>
+          </tr>`;
+      body.parentElement.appendChild(tfoot);
+    }
+
+    // PAYMENTS TAB
+    function renderPayments() {
+      let allPayments = [];
+      orders.forEach(order => {
+        if (order.payments && order.payments.length > 0) {
+          order.payments.forEach(p => {
+            allPayments.push({ ...p, customerName: order.customerName, orderNumber: order.orderNumber });
+          });
+        }
+      });
+      allPayments.sort((a,b) => new Date(b.date) - new Date(a.date));
+      const totalReceived = allPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+      document.getElementById('app-content').innerHTML = `
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Payment History</h2>
+            <button class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg" onclick="downloadPdf('Payment History')">Download PDF</button>
+        </div>
+        <div class="overflow-x-auto bg-white p-6 rounded-xl shadow-sm">
+          <table id="payment-table" class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Received</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              ${allPayments.map(p => `
+                <tr>
+                  <td class="px-6 py-4">${new Date(p.date).toLocaleString()}</td><td class="px-6 py-4">${escapeHtml(p.customerName)}</td>
+                  <td class="px-6 py-4">${escapeHtml(p.orderNumber)}</td><td class="px-6 py-4">${escapeHtml(p.mode)}</td>
+                  <td class="px-6 py-4 text-right font-semibold">₹${(p.amount || 0).toFixed(2)}</td>
+                </tr>`).join('') || `<tr><td colspan="5" class="text-center py-4 text-gray-500">No payments recorded yet.</td></tr>`}
+            </tbody>
+            <tfoot class="bg-gray-100 font-bold">
+              <tr>
+                <td class="px-6 py-4 text-right" colspan="4">Grand Total</td>
+                <td class="px-6 py-4 text-right">₹${totalReceived.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+    }
+
+    // DAILY REPORTS
+    function generateReportListHtml(items, mapper) {
+        if (!items || items.length === 0) return '<p class="text-sm text-gray-500">None today.</p>';
+        const listHtml = items.map(mapper).join('');
+        return items.length > 3 ? `<div class="mini-ledger-scroll" style="max-height: 80px; border: none; padding-right: 8px;">${listHtml}</div>` : `<div class="space-y-1 mt-2">${listHtml}</div>`;
+    }
+    function scheduleDailyReport() {
+      const now = new Date();
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 0, 0, 0);
+      if (now >= next) next.setDate(next.getDate() + 1);
+      const ms = next.getTime() - now.getTime();
+      setTimeout(() => { showDailyReport(false); setInterval(() => showDailyReport(false), 24 * 60 * 60 * 1000); }, ms);
+    }
+    function showDailyReport(manual = false) {
+      const today = new Date().toISOString().slice(0,10);
+      if (!manual && localStorage.getItem('lastDailyReportDate') === today) return;
+      
+      const todayIso = new Date().toISOString();
+      const newOrders = orders.filter(o => isSameLocalDay(o.bookingDate, todayIso));
+      const paymentsTodayEntries = orders.flatMap(o => (o.payments || []).filter(p => isSameLocalDay(p.date, todayIso)).map(p => ({...p, customerName: o.customerName, orderNumber: o.orderNumber })));
+      const paymentsTotal = paymentsTodayEntries.reduce((s,p)=> s + (p.amount || 0), 0);
+      const completedToday = orders.filter(o => isSameLocalDay(o.completedDate, todayIso));
+      const outstanding = orders.reduce((s, o) => {
+        const totalCharges = o.type === 'stitching' 
+          ? (o.items || []).reduce((c, i) => c + (parseFloat(i.charges) || 0), 0)
+          : (parseFloat(o.charges) || 0);
+        const received = (o.payments || []).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const balance = totalCharges - received;
+        return s + (balance > 0 ? balance : 0);
+      }, 0);
+
+      document.getElementById('daily-report-body').innerHTML = `
+        <div class="space-y-3">
+          <p class="text-sm text-gray-600">Report date: <strong>${new Date().toLocaleDateString()}</strong></p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="p-4 bg-gray-50 rounded"><h4 class="font-semibold">New Orders Today</h4><p class="text-2xl font-bold">${newOrders.length}</p>${generateReportListHtml(newOrders, o => `<div class="text-sm text-gray-700"><strong>${escapeHtml(o.orderNumber)}</strong> - ${escapeHtml(o.customerName)}</div>`)}</div>
+            <div class="p-4 bg-gray-50 rounded"><h4 class="font-semibold">Payments Received</h4><p class="text-2xl font-bold">₹${paymentsTotal.toFixed(2)}</p>${generateReportListHtml(paymentsTodayEntries, p => `<div class="text-sm text-gray-700">₹${p.amount.toFixed(2)} from ${escapeHtml(p.customerName)}</div>`)}</div>
+            <div class="p-4 bg-gray-50 rounded"><h4 class="font-semibold">Total Outstanding</h4><p class="text-2xl font-bold">₹${outstanding.toFixed(2)}</p></div>
+            <div class="p-4 bg-gray-50 rounded"><h4 class="font-semibold">Orders Completed</h4><p class="text-2xl font-bold">${completedToday.length}</p>${generateReportListHtml(completedToday, o => `<div class="text-sm text-gray-700"><strong>${escapeHtml(o.orderNumber)}</strong></div>`)}</div>
+          </div>
+        </div>`;
+      document.getElementById('daily-report-modal').classList.remove('hidden-modal');
+      localStorage.setItem('lastDailyReportDate', today);
+    }
+    document.getElementById('download-daily-report').onclick = () => {
+        downloadPdf('Daily Report');
+    };
+    document.getElementById('close-daily-report').onclick = () => document.getElementById('daily-report-modal').classList.add('hidden-modal');
+    
+    // Payment Modal Listeners
+    document.getElementById('payment-cancel').addEventListener('click', () => document.getElementById('payment-modal').classList.add('hidden-modal'));
+    document.getElementById('payment-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const orderId = Number(document.getElementById('payment-order-id').value);
+        const amount = parseFloat(document.getElementById('payment-amount').value);
+        const mode = document.getElementById('payment-mode').value;
+        const idx = orders.findIndex(o => o.id === orderId);
+        if (idx === -1) { showToast('Order not found.'); return; }
+        const order = orders[idx];
+        if (isNaN(amount) || amount <= 0) { showToast('Invalid payment amount.'); return; }
+        
+        order.payments.push({ id: Date.now(), amount, date: new Date().toISOString(), mode });
+        order.receivedPayment = order.payments.reduce((s,p)=> s + (p.amount||0), 0);
+        const totalCharges = order.type === 'stitching' ? order.items.reduce((s,i)=> s + (i.charges||0), 0) : (order.charges||0);
+        order.paymentReceived = order.receivedPayment >= totalCharges;
+        order.lastUpdated = new Date().toISOString();
+        
+        saveLocalData();
+        showToast(`Received ₹${amount.toFixed(2)} locally.`);
+        document.getElementById('payment-modal').classList.add('hidden-modal');
+        
+        const activeTab = document.querySelector('.nav-button.active').id.replace('tab-', '');
+        if (tabs[activeTab]) tabs[activeTab]();
+    });
+    
+    document.getElementById('notify-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const mobile = document.getElementById('notify-mobile').value;
+        const orderNumber = document.getElementById('notify-order-number').value;
+        const message = document.getElementById('notify-message').value;
+        if (!message) { showToast("Message cannot be empty."); return; }
+        createClientNotification(mobile, `Update on your order #${orderNumber}`, message, 'general', orderNumber);
+        document.getElementById('notify-modal').classList.add('hidden-modal');
+    });
+
+    // PDF GENERATION FUNCTIONS
+    function downloadPdf(title) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const filename = `${title.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+
+        doc.setFontSize(18);
+        doc.text(title, 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 28);
+        
+        try {
+            if (title === 'Customer Profiles') {
+                const head = [['Name', 'Mobile', 'Address', 'Total Balance']];
+                const body = customerData.map(c => {
+                    const custOrders = orders.filter(o => o.customerMobile === c.mobile);
+                    let totalCharges = 0, totalReceived = 0;
+                    custOrders.forEach(o => {
+                        totalCharges += o.type === 'stitching' ? (o.items || []).reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(o.charges) || 0);
+                        totalReceived += (o.receivedPayment || 0);
+                    });
+                    const balance = Math.max(0, totalCharges - totalReceived);
+                    return [c.name, c.mobile, c.address || 'N/A', `Rs. ${balance.toFixed(2)}`];
+                });
+                doc.autoTable({ startY: 35, head, body, theme: 'grid' });
+
+            } else if (title === 'Order Ledger') {
+                doc.autoTable({ html: '#ledger-table', startY: 35, theme: 'grid' });
+            } else if (title === 'Payment History') {
+                doc.autoTable({ html: '#payment-table', startY: 35, theme: 'grid' });
+            } else if (title === 'Daily Report') {
+                 doc.autoTable({ html: '#daily-report-body', startY: 35, theme: 'grid', didDrawCell: (data) => {
+                    // Remove scrollbars from the PDF output if any
+                    if (data.cell.section === 'body') {
+                        data.cell.styles.overflow = 'hidden';
+                    }
+                 }});
+            } else {
+                 showToast("PDF generation for this section is not configured.");
+                 return;
+            }
+            doc.save(filename);
+
+        } catch (e) {
+            console.error("PDF Generation Error: ", e);
+            showToast("Failed to generate PDF. See console for details.", 5000);
+        }
+    }
+
+    function downloadOrderBill(orderId) {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+        
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        let totalCharges = 0;
+        let tableBody = [];
+
+        if (order.type === 'stitching') {
+            totalCharges = order.items.reduce((sum, item) => sum + (parseFloat(item.charges) || 0), 0);
+            tableBody = order.items.map(item => [escapeHtml(item.item), '1', `Rs. ${(parseFloat(item.charges) || 0).toFixed(2)}`]);
+        } else {
+            totalCharges = parseFloat(order.charges) || 0;
+            tableBody = [[escapeHtml(order.description), '1', `Rs. ${totalCharges.toFixed(2)}`]];
+        }
+
+        const received = order.receivedPayment || 0;
+        const balance = Math.max(0, totalCharges - received);
+
+        doc.setFontSize(20);
+        doc.text("Navrose Stitching Point", 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(`Order #: ${order.orderNumber}`, 14, 35);
+        doc.text(`Date: ${formatDateLocal(order.bookingDate)}`, 196, 35, { align: 'right' });
+        doc.text(`Customer: ${escapeHtml(order.customerName)}`, 14, 45);
+        doc.text(`Mobile: ${escapeHtml(order.customerMobile)}`, 14, 52);
+
+        doc.autoTable({
+            startY: 60,
+            head: [['Item/Description', 'Qty', 'Amount']],
+            body: tableBody,
+            foot: [
+                [{ content: 'Total:', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } }, `Rs. ${totalCharges.toFixed(2)}`],
+                [{ content: 'Paid:', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } }, `Rs. ${received.toFixed(2)}`],
+                [{ content: 'Balance Due:', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } }, `Rs. ${balance.toFixed(2)}`],
+            ],
+            theme: 'striped',
+            headStyles: { fillColor: '#374151' }
+        });
+
+        doc.save(`Bill_${order.orderNumber}.pdf`);
+    }
+
+    function handleImagePreviews(event) {
+        const input = event.target;
+        const previewContainer = input.parentElement.querySelector('.image-preview-container');
+        previewContainer.innerHTML = '';
+        const files = Array.from(input.files).slice(0, 3);
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                previewContainer.innerHTML += `
+                    <div class="image-preview">
+                        <img src="${e.target.result}" alt="Preview">
+                    </div>`;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // --- CLIENT CHAT & WEBRTC ---
+    let peerConnection;
+    let localStream;
+    let remoteStream;
+    let currentChatCustomerMobile = null;
+    const servers = {
+        iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ]
+    };
+
+    function renderClientChat() {
+        const customerChats = {};
+        (messages || []).forEach(msg => {
+            if (msg.customerMobile) {
+                if (!customerChats[msg.customerMobile]) {
+                    const customerName = msg.customerName || customerData.find(c => c.mobile === msg.customerMobile)?.name || msg.customerMobile;
+                    customerChats[msg.customerMobile] = { name: customerName, mobile: msg.customerMobile, messages: [], lastTimestamp: 0 };
+                }
+                customerChats[msg.customerMobile].messages.push(msg);
+                if (msg.timestamp > customerChats[msg.customerMobile].lastTimestamp) {
+                    customerChats[msg.customerMobile].lastTimestamp = msg.timestamp;
+                }
+            }
+        });
+
+        const sortedCustomers = Object.values(customerChats).sort((a,b) => b.lastTimestamp - a.timestamp);
+
+        let html = `
+            <h2 class="text-2xl font-bold mb-6">Client Chat</h2>
+            <div class="chat-container bg-white rounded-xl shadow-sm border">
+                <div class="customer-list">
+                    ${sortedCustomers.map(c => `
+                        <div class="customer-list-item" data-mobile="${c.mobile}" onclick="selectChatCustomer('${c.mobile}')">
+                            <p class="font-semibold">${escapeHtml(c.name)}</p>
+                            <p class="text-sm">${c.mobile}</p>
+                        </div>
+                    `).join('') || '<p class="p-4 text-sm text-gray-500">No customer messages yet.</p>'}
+                </div>
+                <div id="chat-area" class="chat-area">
+                    <p class="p-4 text-center text-gray-500">Select a customer to view messages and start a call.</p>
+                </div>
+            </div>`;
+        document.getElementById('app-content').innerHTML = html;
+
+        if (currentChatCustomerMobile) {
+            const customerEl = document.querySelector(`.customer-list-item[data-mobile="${currentChatCustomerMobile}"]`);
+            if (customerEl) {
+                customerEl.classList.add('active');
+                selectChatCustomer(currentChatCustomerMobile);
+            } else {
+                currentChatCustomerMobile = null;
+            }
+        }
+    }
+
+    async function sendTailorMessage(text, imageUrl = null) {
+        if ((!text && !imageUrl) || !currentChatCustomerMobile || !db) return;
+        
+        const customer = customerData.find(c => c.mobile === currentChatCustomerMobile) || messages.find(m => m.customerMobile === currentChatCustomerMobile);
+
+        const messagePayload = {
+            customerMobile: currentChatCustomerMobile,
+            customerName: customer ? customer.name || customer.customerName : 'Customer',
+            text: text || '',
+            sender: 'tailor',
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            isRead: true, 
+            type: imageUrl ? 'image' : 'chat'
+        };
+        if (imageUrl) {
+          messagePayload.imageDataUrl = imageUrl;
+        }
+
+        try {
+            await db.ref('messages').push(messagePayload);
+        } catch (err) {
+            console.error("Error sending tailor message:", err);
+            showToast("Failed to send message.", 4000);
+        }
+    }
+
+    function selectChatCustomer(mobile) {
+        currentChatCustomerMobile = mobile;
+        document.querySelectorAll('.customer-list-item').forEach(el => {
+            if (el.dataset.mobile === mobile) el.classList.add('active');
+            else el.classList.remove('active');
+        });
+        
+        const customerMsgs = messages.filter(m => m.customerMobile === mobile);
+        customerMsgs.sort((a,b) => a.timestamp - b.timestamp);
+
+        if (db) {
+            customerMsgs.forEach(msg => {
+                if (msg.sender === 'client' && !msg.isRead) {
+                    db.ref(`messages/${msg.id}/isRead`).set(true);
+                }
+            });
+        }
+
+        const chatArea = document.getElementById('chat-area');
+        chatArea.innerHTML = `
+            <div id="call-status" class="p-2 text-center bg-gray-100 hidden"></div>
+            <div class="video-call-container hidden">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <video id="localVideo" autoplay playsinline muted></video>
+            </div>
+            <div class="chat-messages flex-grow" id="chat-messages-container">
+                ${customerMsgs.map(msg => {
+                    const senderClass = msg.sender === 'client' ? 'user' : 'bot';
+                    let messageHtml = '';
+                    if (msg.text) {
+                        messageHtml += `<p>${escapeHtml(msg.text)}</p>`;
+                    }
+                    const imgSrc = msg.imageDataUrl;
+                    if (imgSrc) {
+                        window.messageImageCache[msg.id] = imgSrc;
+                        messageHtml += `<div class="mt-2"><img src="${imgSrc}" class="max-w-xs rounded-lg cursor-pointer" onclick="viewPaymentProof(window.messageImageCache['${msg.id}'])" alt="Shared image"></div>`;
+                    }
+                    return `<div class="chat-message ${senderClass}">${messageHtml}</div>`;
+                }).join('')}
+            </div>
+            <div class="p-2 border-t flex gap-2 items-center">
+                 <button id="answer-call-btn" class="px-3 py-2 bg-green-500 text-white rounded-lg hidden">Answer</button>
+                 <button id="end-call-btn" class="px-3 py-2 bg-red-500 text-white rounded-lg hidden">End</button>
+                 <input type="file" id="tailor-image-upload" accept="image/*" class="hidden">
+                 <button id="tailor-attach-btn" class="p-2 rounded-lg hover:bg-gray-200" aria-label="Attach Image">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 0 0 2.122 2.122l7.81-7.81" /></svg>
+                 </button>
+                 <textarea id="tailor-chat-input" class="form-input flex-grow" placeholder="Type your reply..." rows="1"></textarea>
+                 <button id="send-tailor-message-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg">Send</button>
+            </div>
+        `;
+        
+        const messagesContainer = document.getElementById('chat-messages-container');
+        if(messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        const chatInput = document.getElementById('tailor-chat-input');
+        
+        document.getElementById('send-tailor-message-btn').onclick = () => {
+            const text = chatInput.value.trim();
+            if (text) sendTailorMessage(text);
+            chatInput.value = '';
+        };
+
+        chatInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                const text = chatInput.value.trim();
+                if (text) sendTailorMessage(text);
+                chatInput.value = '';
+            }
+        });
+        
+        const attachBtn = document.getElementById('tailor-attach-btn');
+        const fileInput = document.getElementById('tailor-image-upload');
+        attachBtn.onclick = () => fileInput.click();
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            attachBtn.disabled = true;
+            showToast('Processing image...', 2000);
+            const imageUrl = await imageToDataUrl(file);
+            if(imageUrl) {
+                sendTailorMessage('Image', imageUrl);
+            } else {
+                showToast('Image processing failed.', 3000);
+            }
+            attachBtn.disabled = false;
+        };
+
+        setupCallListeners(mobile);
+    }
+    
+    function setupCallListeners(mobile) {
+        if (!db) return;
+        const callRef = db.ref(`webrtc-signaling/${mobile}`);
+        
+        callRef.on('value', async (snapshot) => {
+            const data = snapshot.val();
+            if (data?.offer && !peerConnection) {
+                document.getElementById('answer-call-btn').classList.remove('hidden');
+                document.getElementById('answer-call-btn').onclick = () => answerCall(mobile, data.offer);
+                showToast(`Incoming call from ${mobile}...`);
+            }
+            if (data?.clientCandidates && peerConnection) {
+                data.clientCandidates.forEach(candidate => peerConnection.addIceCandidate(new RTCIceCandidate(candidate)));
+            }
+        });
+    }
+
+    async function answerCall(mobile, offer) {
+        document.getElementById('answer-call-btn').classList.add('hidden');
+        document.getElementById('end-call-btn').classList.remove('hidden');
+        document.querySelector('.video-call-container').classList.remove('hidden');
+        document.getElementById('chat-messages-container').classList.add('hidden');
+
+        peerConnection = new RTCPeerConnection(servers);
+        
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('localVideo').srcObject = localStream;
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        peerConnection.ontrack = event => {
+            document.getElementById('remoteVideo').srcObject = event.streams[0];
+        };
+        
+        const tailorCandidates = [];
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                tailorCandidates.push(event.candidate.toJSON());
+            } else {
+                db.ref(`webrtc-signaling/${mobile}/tailorCandidates`).set(tailorCandidates);
+            }
+        };
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        await db.ref(`webrtc-signaling/${mobile}`).update({ answer: { type: answer.type, sdp: answer.sdp }});
+
+        document.getElementById('end-call-btn').onclick = () => endCall(mobile);
+    }
+
+    function endCall(mobile) {
+        if(peerConnection) peerConnection.close();
+        if(localStream) localStream.getTracks().forEach(track => track.stop());
+        peerConnection = null;
+        localStream = null;
+        if(db && mobile) db.ref(`webrtc-signaling/${mobile}`).remove();
+
+        const endBtn = document.getElementById('end-call-btn');
+        const videoContainer = document.querySelector('.video-call-container');
+        const chatContainer = document.getElementById('chat-messages-container');
+        
+        if (endBtn) endBtn.classList.add('hidden');
+        if (videoContainer) videoContainer.classList.add('hidden');
+        if (chatContainer) chatContainer.classList.remove('hidden');
+    }
+
+
+    // Initial load
+    window.addEventListener('DOMContentLoaded', ()=>{
+      initializeFirebase();
+      loadData();
+      setActiveTab('dashboard');
+
+      if ((!orders || orders.length === 0) && (!customerData || customerData.length === 0) && db) {
+          initialFetchFromCloud();
+      } else {
+          renderDashboard();
+      }
+
+      scheduleDailyReport();
+      const now = new Date();
+      if (now.getHours() >= 22 && localStorage.getItem('lastDailyReportDate') !== now.toISOString().slice(0,10)) {
+        setTimeout(()=> showDailyReport(false), 600);
+      }
+      document.getElementById('sync-button').addEventListener('click', syncData);
+    });
+
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // Use an absolute path derived from the current location's origin
+        // to prevent cross-origin errors in specific hosting environments.
+        const swUrl = `${location.origin}/sw.js`;
+        navigator.serviceWorker.register(swUrl)
+          .then(registration => console.log('Service Worker registered with scope:', registration.scope))
+          .catch(err => console.error('Service Worker registration failed:', err));
+      });
+    }
+
+    // expose some functions globally for inline handlers
+    Object.assign(window, {
+      receivePayment, editOrder, deleteOrder, toggleStatus, deletePayment,
+      renderLedger, renderDashboard, renderOrdersTable, renderOrderEntry,
+      renderAlterations, renderPayments, renderMarketTodo, renderReminders,
+      renderCustomerProfiles, renderBackupRestore, renderSettings, renderClientChat,
+      renderOnlineBookings, createOrderFromBooking,
+      addNewCustomer, editCustomer, deleteCustomer,
+      toggleMarketTodo, deleteMarketTodo, toggleReminder, deleteReminder,
+      handleImagePreviews, deleteDesignImage, downloadPdf, downloadOrderBill, viewDesigns,
+      markMessageAsRead, viewPaymentProof, selectChatCustomer, answerCall, endCall, sendTailorMessage,
+      openCustomNotifyModal, sendPaymentReminder
+    });
+  </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

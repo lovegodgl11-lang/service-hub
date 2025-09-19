@@ -1,0 +1,9 @@
+{
+  "name": "Navrose Stitching Point",
+  "description": "A tailor shop management application to handle orders, customers, and business operations.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "prompt": ""
+}

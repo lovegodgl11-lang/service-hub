@@ -1,0 +1,1011 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Portal - Navrose Stitching Point</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-storage-compat.js"></script>
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.umd.min.js"></script>
+    <!-- QR Scanner Library -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        :root { --bg: #f9fafb; --text: #111827; --primary: #4338ca; }
+        html, body { min-height: 100vh; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            margin: 0;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container { max-width: 900px; width: 100%; }
+        .form-input, .form-textarea, .form-select {
+            width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem;
+            font-size: 1rem; line-height: 1.5rem; transition: all 0.2s;
+        }
+        .form-input:focus, .form-textarea:focus, .form-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.15); }
+        .btn { padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-primary:hover { background-color: #3730a3; }
+        .btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .hidden { display: none !important; }
+
+        #login-view, #appointment-view, #dashboard-view, .modal-content {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Chat styles */
+        .chat-container { display: flex; flex-direction: column; height: 60vh; border: 1px solid #e5e7eb; border-radius: 0.75rem; overflow: hidden; }
+        .chat-messages { flex-grow: 1; overflow-y: auto; padding: 1rem; background: #f9fafb; }
+        .chat-message { max-width: 80%; padding: 0.5rem 1rem; border-radius: 1rem; margin-bottom: 0.5rem; word-wrap: break-word; }
+        .chat-message.user { background: var(--primary); color: white; margin-left: auto; border-bottom-right-radius: 0.25rem; }
+        .chat-message.bot { background: #e5e7eb; color: #374151; margin-right: auto; border-bottom-left-radius: 0.25rem; }
+        .chat-input-area { display: flex; padding: 1rem; border-top: 1px solid #e5e7eb; background: white; }
+        .typing-indicator { font-style: italic; color: #6b7280; }
+        .tab-button { padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-medium: text-gray-500; }
+        .tab-button:hover { background-color: #f3f4f6; }
+        .tab-button.active { background-color: #eef2ff; color: var(--primary); font-weight: 600; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        
+        /* Video Call styles */
+        #video-call-view { position: relative; background-color: #000; border-radius: 0.75rem; overflow:hidden; }
+        #remoteVideo { width: 100%; height: auto; max-height: 60vh; display: block; }
+        #localVideo { position: absolute; bottom: 1rem; right: 1rem; width: 25%; max-width: 150px; border-radius: 0.5rem; border: 2px solid white; }
+        
+        /* Footer */
+        footer { width: 100%; max-width: 900px; border-top: 1px solid #e5e7eb; margin-top: auto; }
+        .social-icon { color: #4b5563; transition: transform 0.2s ease-in-out, color 0.2s ease-in-out; }
+        .social-icon:hover { color: var(--primary); transform: scale(1.2); }
+        .social-icon svg { width: 24px; height: 24px; }
+        
+        /* Responsive */
+        @media (max-width: 640px) {
+            body { padding: 0.5rem; }
+            .p-8 { padding: 1.5rem; }
+            .text-3xl { font-size: 1.5rem; }
+            .text-2xl { font-size: 1.25rem; }
+            .dashboard-header { flex-direction: column; align-items: flex-start !important; gap: 0.5rem; }
+            .tabs-nav { flex-wrap: wrap; }
+            /* Responsive Table */
+            #orders-content table { border: 0; }
+            #orders-content table thead { display: none; }
+            #orders-content table tr { 
+                display: block; 
+                margin-bottom: 1rem; 
+                border: 1px solid #ddd;
+                border-radius: 0.5rem;
+                padding: 0.5rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            }
+            #orders-content table td { 
+                display: block; 
+                text-align: right; 
+                padding-left: 50%; /* to make space for label */
+                position: relative;
+                border-bottom: 1px dotted #eee;
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
+            #orders-content table td:last-child { border-bottom: 0; }
+            #orders-content table td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 0;
+                width: 45%;
+                padding-left: 0.5rem;
+                font-weight: 600;
+                text-align: left;
+                color: #374151;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="client-app" class="container">
+        <!-- Login View -->
+        <div id="login-view" class="bg-white p-8 rounded-2xl text-center">
+            <h1 class="text-3xl font-bold mb-2">Navrose Stitching Point</h1>
+            <p class="text-gray-600 mb-6">Welcome to your Client Portal</p>
+            <form id="login-form">
+                <label for="mobile-login" class="block text-left font-medium mb-1">Enter your Mobile Number to login</label>
+                <input type="tel" id="mobile-login" class="form-input text-lg" placeholder="e.g., 9876543210" required>
+                <p class="text-gray-500 text-sm mt-2 text-left">Please use the mobile number you provided at the time of booking.</p>
+                <p id="login-error-msg" class="text-red-500 text-sm mt-2 text-left hidden"></p>
+                <button type="submit" class="btn btn-primary w-full mt-4">Login</button>
+                <button type="button" id="go-to-appointment-btn" class="text-sm text-indigo-600 hover:underline mt-4">New Customer? Book an Appointment</button>
+            </form>
+            <p id="firebase-error" class="text-red-500 text-sm mt-4 hidden">Could not connect to the database. Please try again later.</p>
+        </div>
+
+        <!-- Appointment View -->
+        <div id="appointment-view" class="hidden bg-white p-8 rounded-2xl">
+            <h2 class="text-2xl font-bold mb-2">Book an Appointment</h2>
+            <p class="text-gray-600 mb-6">Please provide your details to book an appointment.</p>
+            <form id="appointment-form" class="space-y-4">
+                <div><label class="font-medium">Name</label><input type="text" id="appt-name" class="form-input" required></div>
+                <div><label class="font-medium">Mobile</label><input type="tel" id="appt-mobile" class="form-input" required readonly></div>
+                <div><label class="font-medium">Address (Optional)</label><input type="text" id="appt-address" class="form-input"></div>
+                <div><label class="font-medium">Message</label><textarea id="appt-message" class="form-input" rows="3" required placeholder="What would you like to get stitched or altered?"></textarea></div>
+                <div class="flex gap-4">
+                  <button type="submit" class="btn btn-primary flex-grow">Submit Request</button>
+                  <button type="button" id="back-to-login" class="btn bg-gray-200">Back to Login</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="hidden bg-white p-8 rounded-2xl">
+            <div class="flex justify-between items-start mb-6 dashboard-header">
+                <div>
+                    <h2 class="text-2xl font-bold">Welcome, <span id="customer-name-display"></span>!</h2>
+                    <p class="text-gray-500">Here's your personal dashboard.</p>
+                </div>
+                <div class="flex items-center gap-4">
+                  <div id="client-notification-bell-container" class="relative">
+                    <button id="client-notification-bell" aria-label="Show notifications" class="p-2 rounded-full hover:bg-gray-100 relative">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
+                      <span id="client-notification-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden"></span>
+                    </button>
+                  </div>
+                  <button id="logout-btn" class="btn bg-red-500 text-white hover:bg-red-600">Logout</button>
+                </div>
+            </div>
+            
+            <div class="border-b border-gray-200 mb-4">
+                <nav class="flex space-x-2 tabs-nav" aria-label="Tabs">
+                    <button id="tab-orders" class="tab-button active">My Orders</button>
+                    <button id="tab-inbox" class="tab-button">Inbox</button>
+                    <button id="tab-qr" class="tab-button">Pay with QR</button>
+                    <button id="tab-proof" class="tab-button">Upload Payment Proof</button>
+                    <button id="tab-booking" class="tab-button">New Suit Booking</button>
+                </nav>
+            </div>
+
+            <div id="orders-content"></div>
+            <div id="inbox-content" class="hidden"></div>
+            <div id="qr-content" class="hidden text-center p-4">
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold mb-4">Pay with Our QR Code</h3>
+                    <div id="qr-code-container" class="flex justify-center items-center bg-gray-100 p-4 rounded-lg min-h-[220px]">
+                        <p>Loading QR Code...</p>
+                    </div>
+                </div>
+                <div class="border-t pt-6">
+                    <h3 class="text-xl font-bold mb-4">Scan a Code</h3>
+                     <button id="start-scan-btn" class="btn btn-primary">Start Camera Scanner</button>
+                    <div id="scanner-container" class="hidden mt-4 relative">
+                        <video id="qr-video" class="w-full h-auto rounded-lg"></video>
+                        <canvas id="qr-canvas" class="hidden"></canvas>
+                        <p id="scan-result" class="mt-2 font-semibold"></p>
+                        <button id="stop-scan-btn" class="btn bg-red-500 text-white mt-2">Stop Scanner</button>
+                    </div>
+                </div>
+            </div>
+            <div id="payment-proof-content" class="hidden p-4">
+                <h3 class="text-xl font-bold mb-4">Upload Payment Proof</h3>
+                <form id="payment-proof-form" class="space-y-4 max-w-lg mx-auto">
+                    <div>
+                        <label for="order-selector" class="block font-medium mb-1">Select Order</label>
+                        <select id="order-selector" class="form-select" required></select>
+                    </div>
+                    <div>
+                        <label for="payment-screenshot" class="block font-medium mb-1">Upload Screenshot</label>
+                        <input type="file" id="payment-screenshot" class="form-input" accept="image/*" required>
+                        <img id="screenshot-preview" src="#" alt="Screenshot Preview" class="hidden mt-4 max-h-48 rounded-lg border">
+                    </div>
+                     <div>
+                        <label for="transaction-details" class="block font-medium mb-1">Transaction Details (Optional)</label>
+                        <input type="text" id="transaction-details" class="form-input" placeholder="e.g., UPI Transaction ID">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-full">Submit Proof</button>
+                </form>
+            </div>
+            <div id="online-booking-content" class="hidden p-4">
+                 <h3 class="text-xl font-bold mb-4">Book a New Suit</h3>
+                 <form id="online-booking-form" class="space-y-4 max-w-lg mx-auto">
+                    <div>
+                        <label for="suit-type" class="block font-medium mb-1">Type of Suit</label>
+                        <select id="suit-type" class="form-select" required>
+                            <option value="">-- Select a type --</option>
+                            <option value="Salwar Suit">Salwar Suit</option>
+                            <option value="Pant Suit">Pant Suit</option>
+                            <option value="Plazoo Suit">Plazoo Suit</option>
+                            <option value="Frock Suit">Frock Suit</option>
+                            <option value="Other">Other (Specify in message)</option>
+                        </select>
+                    </div>
+                     <div>
+                        <label for="booking-message" class="block font-medium mb-1">Message / Instructions</label>
+                        <textarea id="booking-message" class="form-textarea" rows="4" placeholder="Any special instructions, design ideas, or details?"></textarea>
+                    </div>
+                     <div>
+                        <label for="design-upload" class="block font-medium mb-1">Upload Design (Optional)</label>
+                        <input type="file" id="design-upload" class="form-input" accept="image/*">
+                        <img id="design-preview" src="#" alt="Design Preview" class="hidden mt-4 max-h-48 rounded-lg border">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-full">Send Booking Request</button>
+                 </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg" role="status" aria-live="polite"></div>
+
+    <!-- Payment Instructions Modal -->
+    <div id="payment-instructions-modal" class="modal hidden">
+        <div class="modal-content bg-white p-8 rounded-2xl max-w-md w-full text-center relative">
+            <button onclick="document.getElementById('payment-instructions-modal').classList.add('hidden')" class="absolute top-2 right-2 p-2 text-2xl font-bold">&times;</button>
+            <h3 class="text-xl font-bold mb-4">Payment Instructions</h3>
+            <p id="payment-modal-text" class="text-gray-700"></p>
+        </div>
+    </div>
+
+
+    <footer class="text-center py-8 text-gray-600 mt-8">
+        <p class="font-bold text-lg text-gray-800">Navrose Stitching Point</p>
+        <div class="flex justify-center items-center space-x-6 my-4">
+            <a href="https://wa.me/917696272780" target="_blank" class="social-icon" aria-label="WhatsApp">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.886-.001 2.269.654 4.505 1.905 6.332l-1.225 4.485 4.635-1.218zM8.311 10.241c.057-.344.498-.552.727-.552.19 0 .341.004.501.005.282.008.431.16.639.431.242.324.787 1.638.787 1.766 0 .128-.092.282-.182.38.099.117.708.836.708.836l.324.516c.108.172.182.259.29.347.109.088.203.116.29.116.087 0 .231-.046.347-.137.115-.091.209-.209.282-.347s.092-.259.137-.38.046-.231.046-.231l.37-.137c.182-.091.364-.137.546-.137.182 0 .347.046.475.137.128.092.182.209.209.347.028.137.028.638 0 .867-.027.231-.518.787-.747.979-.228.191-1.225.882-1.352.882-.128 0-.259-.046-.38-.137s-.231-.209-.347-.38c-.116-.172-1.129-1.701-1.129-1.701l-.182-.259c-.091-.116-.182-.182-.347-.231-.164-.046-.347-.046-.529.046-.182.091-.347.209-.431.38-.083.172-.137.364-.137.546s.046.347.046.475c0 .128-.046.431-.209.552-.165.121-.347.182-.553.182-.208 0-.866-.116-1.591-.837-1.073-1.025-1.073-2.149-1.073-2.149s-.116-1.025.259-1.516z"/></svg>
+            </a>
+            <a href="#" target="_blank" class="social-icon" aria-label="Facebook"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path></svg></a>
+            <a href="#" target="_blank" class="social-icon" aria-label="Instagram"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.585-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.585-.012-4.85-.07c-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.85s.012-3.584.07-4.85c.149-3.227 1.664-4.771 4.919-4.919C8.415 2.175 8.796 2.163 12 2.163zm0 1.802c-3.141 0-3.504.012-4.729.068-2.678.122-3.812 1.25-3.938 3.938-.056 1.225-.068 1.588-.068 4.729s.012 3.504.068 4.729c.126 2.688 1.259 3.816 3.938 3.938 1.225.056 1.587.068 4.729.068s3.504-.012 4.729-.068c2.678-.122 3.816-1.25 3.938-3.938.056-1.225.068-1.587.068-4.729s-.012-3.504-.068-4.729c-.122-2.688-1.255-3.816-3.938-3.938C15.504 3.975 15.141 3.965 12 3.965zM12 8.25a3.75 3.75 0 100 7.5 3.75 3.75 0 000-7.5zM12 14a2 2 0 110-4 2 2 0 010 4zm6.406-7.188a.938.938 0 100-1.875.938.938 0 000 1.875z"></path></svg></a>
+        </div>
+        <p class="text-sm">&copy; <span id="year"></span> Navrose Stitching Point. All Rights Reserved.</p>
+    </footer>
+
+    <script>
+        // --- PASTE YOUR FIREBASE CONFIG HERE ---
+        // const firebaseConfig = { ... };
+
+        // --- IMPORTANT FIREBASE SETUP ---
+        // For this portal to work correctly, you MUST set up database indexes in Firebase.
+        // 1. Go to your Firebase Console.
+        // 2. Go to Realtime Database > Rules.
+        // 3. Paste the following JSON:
+        // {
+        //   "rules": {
+        //     ".read": true,
+        //     ".write": true,
+        //     "customers": {
+        //       ".indexOn": "mobile"
+        //     },
+        //     "orders": {
+        //       ".indexOn": "customerMobile"
+        //     },
+        //     "messages": {
+        //       ".indexOn": "customerMobile"
+        //     },
+        //     "clientNotifications": {
+        //       "$mobile": {
+        //         ".indexOn": "timestamp"
+        //       }
+        //     }
+        //   }
+        // }
+        // NOTE: The .read and .write rules are set to `true` for simplicity.
+        // For a production app, you should secure your database.
+        
+        // --- GLOBAL STATE ---
+        let db;
+        let loggedInMobile = null;
+        let currentCustomer = null;
+        let customerOrders = [];
+        let messages = [];
+        let notificationListener = null;
+        let messageListener = null;
+        let scanAnimation;
+
+        // --- UTILITIES ---
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), duration);
+        }
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, match => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+            }[match]));
+        }
+        
+        /**
+         * Converts an image file to a Base64 Data URL.
+         * Bypasses the need for Firebase Storage.
+         * @param {File} file The image file to convert.
+         * @returns {Promise<string|null>} A promise that resolves with the Data URL or null.
+         */
+        function imageToDataUrl(file) {
+            if (!file) {
+                return Promise.resolve(null);
+            }
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => {
+                    console.error("Image reading failed:", error);
+                    showToast("Failed to process image file.", 4000);
+                    reject(error);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // --- FIREBASE INITIALIZATION ---
+        function initializeFirebase() {
+            try {
+                if (typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey) {
+                    firebase.initializeApp(firebaseConfig);
+                    db = firebase.database();
+                    console.log("Firebase initialized for client.");
+                } else {
+                    document.getElementById('firebase-error').textContent = "Firebase configuration is missing. The app cannot connect to the server.";
+                    document.getElementById('firebase-error').classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error("Firebase initialization failed:", e);
+                document.getElementById('firebase-error').textContent = `Firebase connection failed: ${e.message}`;
+                document.getElementById('firebase-error').classList.remove('hidden');
+            }
+        }
+
+        // --- AUTH & DATA FETCHING ---
+        async function handleLogin(e) {
+            e.preventDefault();
+            const mobile = document.getElementById('mobile-login').value.trim();
+            const errorMsg = document.getElementById('login-error-msg');
+            if (!mobile || !/^\d{10}$/.test(mobile)) {
+                errorMsg.textContent = "Please enter a valid 10-digit mobile number.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            errorMsg.classList.add('hidden');
+            
+            if (!db) {
+                showToast("Cannot log in. Database not connected.");
+                return;
+            }
+
+            try {
+                const customerRef = db.ref('customers').orderByChild('mobile').equalTo(mobile);
+                const snapshot = await customerRef.once('value');
+
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const customerKey = Object.keys(data)[0];
+                    currentCustomer = { id: customerKey, ...data[customerKey] };
+                    loggedInMobile = mobile;
+                    
+                    document.getElementById('login-view').classList.add('hidden');
+                    document.getElementById('dashboard-view').classList.remove('hidden');
+                    await fetchCustomerData();
+                    listenForNotifications();
+                    listenForMessages();
+                } else {
+                    errorMsg.textContent = "Mobile number not found. Are you a new customer?";
+                    errorMsg.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error("Login error: ", err);
+                errorMsg.textContent = "An error occurred during login. Please try again.";
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        async function fetchCustomerData() {
+            if (!loggedInMobile || !db) return;
+            const ordersRef = db.ref('orders').orderByChild('customerMobile').equalTo(loggedInMobile);
+            const snapshot = await ordersRef.once('value');
+            if (snapshot.exists()) {
+                customerOrders = Object.values(snapshot.val()).sort((a,b) => new Date(b.bookingDate) - new Date(a.bookingDate));
+            } else {
+                customerOrders = [];
+            }
+            updateDashboard();
+        }
+
+        function listenForMessages() {
+            if (!db || !loggedInMobile) return;
+            if(messageListener) db.ref('messages').off('value', messageListener);
+
+            const messagesQuery = db.ref('messages').orderByChild('customerMobile').equalTo(loggedInMobile);
+            messageListener = messagesQuery.on('value', (snapshot) => {
+                const relevantMessages = snapshot.val() || {};
+                messages = Object.values(relevantMessages);
+                messages.sort((a,b) => a.timestamp - b.timestamp);
+                
+                const inboxTab = document.getElementById('tab-inbox');
+                if (inboxTab && inboxTab.classList.contains('active')) {
+                    renderInbox();
+                }
+            });
+        }
+
+        function handleLogout() {
+            if (notificationListener && loggedInMobile) {
+                db.ref(`clientNotifications/${loggedInMobile}`).off('child_added', notificationListener);
+            }
+            if (messageListener && loggedInMobile) {
+                const messagesQuery = db.ref('messages').orderByChild('customerMobile').equalTo(loggedInMobile);
+                messagesQuery.off('value', messageListener);
+            }
+            loggedInMobile = null;
+            currentCustomer = null;
+            customerOrders = [];
+            messages = [];
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('mobile-login').value = '';
+        }
+
+        // --- UI UPDATES & TABS ---
+        function updateDashboard() {
+            document.getElementById('customer-name-display').textContent = escapeHtml(currentCustomer.name);
+            setActiveTab('orders');
+        }
+
+        function setActiveTab(tabId) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('#dashboard-view > div[id$="-content"]').forEach(div => div.classList.add('hidden'));
+
+            const tabButton = document.getElementById(`tab-${tabId}`);
+            if (tabButton) tabButton.classList.add('active');
+            
+            const contentEl = document.getElementById(`${tabId}-content`);
+            if (contentEl) contentEl.classList.remove('hidden');
+
+            // Load content for the active tab
+            if (tabId === 'orders') renderOrders();
+            else if (tabId === 'inbox') renderInbox();
+            else if (tabId === 'qr') loadQrCode();
+            else if (tabId === 'proof') populateOrderSelectorForProof();
+            else if (tabId === 'booking') {
+                document.getElementById('online-booking-form').reset();
+                document.getElementById('design-preview').classList.add('hidden');
+            }
+        }
+
+        function renderOrders() {
+            const container = document.getElementById('orders-content');
+            if (customerOrders.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500 py-8">You have no orders yet.</p>`;
+                return;
+            }
+            container.innerHTML = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance Due</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${customerOrders.map(o => {
+                            const totalCharges = o.type === 'stitching' ? (o.items || []).reduce((s,i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(o.charges) || 0);
+                            const received = o.receivedPayment || 0;
+                            const balance = Math.max(0, totalCharges - received);
+                            const items = o.type === 'stitching' ? (o.items || []).map(i => i.item).join(', ') : (o.description);
+                            return `
+                                <tr>
+                                    <td class="px-6 py-4" data-label="Order #">${escapeHtml(o.orderNumber)}</td>
+                                    <td class="px-6 py-4" data-label="Date">${new Date(o.bookingDate).toLocaleDateString()}</td>
+                                    <td class="px-6 py-4" data-label="Items">${escapeHtml(items)}</td>
+                                    <td class="px-6 py-4" data-label="Status"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${o.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${escapeHtml(o.status || 'Pending')}</span></td>
+                                    <td class="px-6 py-4 font-semibold" data-label="Balance Due">₹${balance.toFixed(2)}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+        }
+        
+        // --- FEATURE IMPLEMENTATIONS ---
+
+        // QR Code Tab
+        async function loadQrCode() {
+            const container = document.getElementById('qr-code-container');
+            if (!db) {
+                container.innerHTML = `<p class="text-red-500">Cannot load QR code. Database not connected.</p>`;
+                return;
+            }
+            try {
+                const settingsSnap = await db.ref('settings').once('value');
+                const settings = settingsSnap.val();
+                if (settings && settings.qrCodeDataUrl) {
+                    container.innerHTML = `
+                        <img src="${settings.qrCodeDataUrl}" alt="UPI QR Code" class="w-48 h-48 object-contain bg-white p-2 rounded-lg shadow-md">
+                        ${settings.upiId ? `<p class="mt-4 font-semibold text-lg">UPI ID: ${escapeHtml(settings.upiId)}</p>` : ''}
+                    `;
+                } else {
+                    container.innerHTML = `<p class="text-gray-600">The tailor has not set up a QR code yet.</p>`;
+                }
+            } catch (e) {
+                console.error("Error loading QR code:", e);
+                container.innerHTML = `<p class="text-red-500">Could not load QR code.</p>`;
+            }
+        }
+
+        // QR Scanner
+        function startScanner() {
+            const video = document.getElementById('qr-video');
+            const canvasElement = document.getElementById('qr-canvas');
+            const canvas = canvasElement.getContext('2d');
+            const scanResult = document.getElementById('scan-result');
+            const scannerContainer = document.getElementById('scanner-container');
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
+                    video.play();
+                    scannerContainer.classList.remove('hidden');
+                    document.getElementById('start-scan-btn').classList.add('hidden');
+                    requestAnimationFrame(tick);
+                })
+                .catch(err => {
+                    console.error("Camera access error:", err);
+                    showToast("Could not access the camera.");
+                });
+
+            function tick() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    canvasElement.height = video.videoHeight;
+                    canvasElement.width = video.videoWidth;
+                    canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+                    const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert",
+                    });
+
+                    if (code) {
+                        scanResult.textContent = `Scanned: ${code.data}`;
+                    }
+                }
+                scanAnimation = requestAnimationFrame(tick);
+            }
+        }
+
+        function stopScanner() {
+            cancelAnimationFrame(scanAnimation);
+            const video = document.getElementById('qr-video');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('scanner-container').classList.add('hidden');
+            document.getElementById('start-scan-btn').classList.remove('hidden');
+        }
+
+        // Payment Proof Tab
+        function populateOrderSelectorForProof() {
+            const selector = document.getElementById('order-selector');
+            const pendingPaymentOrders = customerOrders.filter(o => {
+                const totalCharges = o.type === 'stitching' ? (o.items || []).reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(o.charges) || 0);
+                const received = o.receivedPayment || 0;
+                return totalCharges > received;
+            });
+
+            if (pendingPaymentOrders.length === 0) {
+                selector.innerHTML = `<option value="">No orders with pending payments</option>`;
+                selector.disabled = true;
+            } else {
+                selector.innerHTML = `<option value="">-- Select an Order --</option>` + pendingPaymentOrders.map(o => `<option value="${o.orderNumber}">${o.orderNumber} - ${o.type === 'stitching' ? o.items[0].item : o.description}</option>`).join('');
+                selector.disabled = false;
+            }
+        }
+        
+        async function handlePaymentProofSubmit(e) {
+            e.preventDefault();
+            const form = e.target;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            const orderNumber = document.getElementById('order-selector').value;
+            const file = document.getElementById('payment-screenshot').files[0];
+            const transactionDetails = document.getElementById('transaction-details').value.trim();
+
+            if (!orderNumber || !file) {
+                showToast("Please select an order and a screenshot file.");
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Proof';
+                return;
+            }
+
+            try {
+                const imageDataUrl = await imageToDataUrl(file);
+                if (!imageDataUrl) { throw new Error("Image conversion failed."); }
+                
+                const messagePayload = {
+                    customerMobile: loggedInMobile,
+                    customerName: currentCustomer.name,
+                    sender: 'client',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: 'payment',
+                    text: `Payment proof for order #${orderNumber}. Details: ${transactionDetails || 'N/A'}`,
+                    isRead: false,
+                    imageDataUrl: imageDataUrl
+                };
+
+                await db.ref('messages').push(messagePayload);
+                showToast("Payment proof submitted successfully!");
+                form.reset();
+                document.getElementById('screenshot-preview').classList.add('hidden');
+                setActiveTab('orders');
+
+            } catch (err) {
+                console.error("Payment proof submission failed:", err);
+                showToast("Failed to submit payment proof. Please try again.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Proof';
+            }
+        }
+
+        // Online Booking Tab
+        async function handleOnlineBooking(e) {
+            e.preventDefault();
+            const form = e.target;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending...';
+
+            const suitType = document.getElementById('suit-type').value;
+            const message = document.getElementById('booking-message').value.trim();
+            const file = document.getElementById('design-upload').files[0];
+
+            if (!suitType) {
+                showToast("Please select a suit type.");
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Send Booking Request';
+                return;
+            }
+
+            try {
+                let designImageDataUrl = null;
+                if (file) {
+                    designImageDataUrl = await imageToDataUrl(file);
+                }
+                
+                const messagePayload = {
+                    customerMobile: loggedInMobile,
+                    customerName: currentCustomer.name,
+                    sender: 'client',
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: 'online_booking',
+                    text: `New booking request for a ${suitType}.`,
+                    isRead: false,
+                    details: {
+                        suitType,
+                        message,
+                        designImageDataUrl
+                    }
+                };
+
+                await db.ref('messages').push(messagePayload);
+                showToast("Booking request sent! We will contact you shortly.");
+                form.reset();
+                document.getElementById('design-preview').classList.add('hidden');
+                setActiveTab('orders');
+
+            } catch (err) {
+                console.error("Online booking failed:", err);
+                showToast("Failed to send booking request. Please try again.");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Send Booking Request';
+            }
+        }
+
+        // Inbox Tab
+        function renderInbox() {
+            const container = document.getElementById('inbox-content');
+            container.innerHTML = `
+                <div class="chat-container bg-white">
+                    <div class="chat-messages" id="chat-messages-container">
+                        ${messages.map(msg => {
+                            const senderClass = msg.sender === 'client' ? 'user' : 'bot';
+                            let messageHtml = '';
+                            if (msg.text) { messageHtml += `<p>${escapeHtml(msg.text)}</p>`; }
+                            if (msg.imageDataUrl) {
+                                messageHtml += `<div class="mt-2"><img src="${msg.imageDataUrl}" class="max-w-[200px] rounded-lg cursor-pointer" alt="Shared image"></div>`;
+                            }
+                            return `<div class="chat-message ${senderClass}">${messageHtml}</div>`;
+                        }).join('')}
+                    </div>
+                    <div id="video-call-view" class="hidden">
+                         <video id="remoteVideo" autoplay playsinline></video>
+                         <video id="localVideo" autoplay playsinline muted></video>
+                         <div class="absolute top-2 right-2 flex gap-2">
+                            <button id="end-call-btn" class="btn bg-red-500 text-white">End Call</button>
+                         </div>
+                    </div>
+                    <div class="chat-input-area gap-2">
+                        <button id="start-call-btn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Start Video Call">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-gray-700"><path d="M1.5 4.5a3 3 0 0 1 3-3h1.372c.86 0 1.61.586 1.819 1.42l1.105 4.423a1.875 1.875 0 0 1-.694 1.955l-1.293.97c-.135.101-.164.29-.077.431 1.203 1.92 3.07 3.79 4.99 4.99.141.087.33.058.431-.077l.97-1.293a1.875 1.875 0 0 1 1.955-.694l4.423 1.105c.834.209 1.42.959 1.42 1.82V19.5a3 3 0 0 1-3 3h-2.25C8.552 22.5 1.5 15.448 1.5 6.75V4.5Z" /></svg>
+                        </button>
+                        <button id="client-attach-btn" class="p-2 rounded-full hover:bg-gray-100" aria-label="Attach Image">
+                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M18.97 3.659a2.25 2.25 0 0 0-3.182 0l-10.94 10.94a2.25 2.25 0 1 0 3.182 3.182L18.73 6.08a.75.75 0 0 1 1.06 1.06l-6.72 6.72a.75.75 0 0 0 1.06 1.06l6.72-6.72a3.75 3.75 0 0 0-5.303-5.303l-10.94 10.94A3.75 3.75 0 1 0 9.87 19.87l10.94-10.94a2.25 2.25 0 0 0 0-3.182Z" clip-rule="evenodd" /></svg>
+                        </button>
+                        <input type="file" id="client-image-upload" class="hidden" accept="image/*">
+                        <input type="text" id="client-chat-input" class="form-input" placeholder="Type a message...">
+                        <button id="send-client-message-btn" class="btn btn-primary">Send</button>
+                    </div>
+                </div>`;
+            
+            const messagesContainer = document.getElementById('chat-messages-container');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            document.getElementById('send-client-message-btn').onclick = () => {
+                const text = document.getElementById('client-chat-input').value.trim();
+                if(text) sendClientMessage({ text });
+            };
+            document.getElementById('client-chat-input').addEventListener('keydown', e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    const text = document.getElementById('client-chat-input').value.trim();
+                    if(text) sendClientMessage({ text });
+                }
+            });
+            const attachBtn = document.getElementById('client-attach-btn');
+            const fileInput = document.getElementById('client-image-upload');
+            attachBtn.onclick = () => fileInput.click();
+            fileInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                attachBtn.disabled = true;
+                showToast('Uploading image...');
+                const imageUrl = await imageToDataUrl(file);
+                if(imageUrl) {
+                    await sendClientMessage({ text: '', imageUrl });
+                } else {
+                    showToast('Failed to process image.');
+                }
+                fileInput.value = ''; // Reset file input
+                attachBtn.disabled = false;
+            };
+
+            document.getElementById('start-call-btn').onclick = startCall;
+            document.getElementById('end-call-btn').onclick = endCall;
+
+            setupCallListeners();
+        }
+
+        async function sendClientMessage({ text = '', imageUrl = null }) {
+            if ((!text && !imageUrl) || !db) return;
+
+            const messagePayload = {
+                customerMobile: loggedInMobile,
+                customerName: currentCustomer.name,
+                text,
+                sender: 'client',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: imageUrl ? 'image' : 'chat',
+                isRead: false
+            };
+            if (imageUrl) {
+                messagePayload.imageDataUrl = imageUrl;
+            }
+
+            try {
+                await db.ref('messages').push(messagePayload);
+                if(text) document.getElementById('client-chat-input').value = '';
+            } catch (err) {
+                console.error("Error sending message:", err);
+                showToast("Could not send message.");
+            }
+        }
+        
+        // --- NOTIFICATIONS ---
+        function listenForNotifications() {
+            if (!db || !loggedInMobile) return;
+            const notificationsRef = db.ref(`clientNotifications/${loggedInMobile}`).orderByChild('timestamp').startAt(Date.now());
+            
+            notificationListener = notificationsRef.on('child_added', snapshot => {
+                const notification = snapshot.val();
+                if (notification && !notification.isRead) {
+                    const message = notification.message || notification.title;
+                    showToast(`Notification: ${message}`, 5000);
+                    updateNotificationUI();
+                    db.ref(`clientNotifications/${loggedInMobile}/${snapshot.key}/isRead`).set(true);
+                }
+            });
+            updateNotificationUI();
+        }
+
+        async function updateNotificationUI() {
+            if (!db || !loggedInMobile) return;
+            const notificationsRef = db.ref(`clientNotifications/${loggedInMobile}`);
+            const snapshot = await notificationsRef.once('value');
+            const allNotifications = snapshot.val() ? Object.values(snapshot.val()) : [];
+            const unreadCount = allNotifications.filter(n => !n.isRead).length;
+
+            const badge = document.getElementById('client-notification-badge');
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        // --- Appointment Booking ---
+        async function handleAppointmentRequest(e) {
+            e.preventDefault();
+            const form = e.target;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+
+            const payload = {
+                customerName: document.getElementById('appt-name').value.trim(),
+                customerMobile: document.getElementById('appt-mobile').value.trim(),
+                address: document.getElementById('appt-address').value.trim(),
+                text: document.getElementById('appt-message').value.trim(),
+                sender: 'client',
+                type: 'appointment_request',
+                isRead: false,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            
+            try {
+                await db.ref('messages').push(payload);
+                showToast("Appointment request sent! We will call you to confirm.", 5000);
+                form.reset();
+                document.getElementById('appointment-view').classList.add('hidden');
+                document.getElementById('login-view').classList.remove('hidden');
+            } catch (err) {
+                console.error("Appointment request failed:", err);
+                showToast("Could not send request. Please try again.");
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // --- WebRTC Video Call ---
+        let peerConnection;
+        let localStream;
+        const servers = { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] };
+
+        function setupCallListeners() {
+            if (!db || !loggedInMobile) return;
+            const signalingRef = db.ref(`webrtc-signaling/${loggedInMobile}`);
+            signalingRef.on('value', async (snapshot) => {
+                const data = snapshot.val();
+                if (data?.answer && peerConnection?.signalingState !== 'stable') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                }
+                if (data?.tailorCandidates) {
+                    data.tailorCandidates.forEach(candidate => peerConnection.addIceCandidate(new RTCIceCandidate(candidate)));
+                }
+            });
+        }
+        
+        async function startCall() {
+            if (!loggedInMobile || !db) return;
+            const signalingRef = db.ref(`webrtc-signaling/${loggedInMobile}`);
+            await signalingRef.remove();
+
+            document.getElementById('video-call-view').classList.remove('hidden');
+            
+            peerConnection = new RTCPeerConnection(servers);
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('localVideo').srcObject = localStream;
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = event => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+
+            const clientCandidates = [];
+            peerConnection.onicecandidate = event => {
+                 if (event.candidate) {
+                    clientCandidates.push(event.candidate.toJSON());
+                } else {
+                    signalingRef.update({ clientCandidates });
+                }
+            };
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            await signalingRef.set({ offer: { type: offer.type, sdp: offer.sdp }});
+            showToast("Calling the tailor...");
+        }
+
+        function endCall() {
+            if (peerConnection) peerConnection.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            peerConnection = null;
+            localStream = null;
+            if (db && loggedInMobile) db.ref(`webrtc-signaling/${loggedInMobile}`).remove();
+            document.getElementById('video-call-view').classList.add('hidden');
+        }
+
+
+        // --- EVENT LISTENERS ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initializeFirebase();
+            
+            document.getElementById('year').textContent = new Date().getFullYear();
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+
+            document.getElementById('go-to-appointment-btn').addEventListener('click', () => {
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('appointment-view').classList.remove('hidden');
+                document.getElementById('appt-mobile').value = document.getElementById('mobile-login').value;
+            });
+
+            document.getElementById('back-to-login').addEventListener('click', () => {
+                document.getElementById('appointment-view').classList.add('hidden');
+                document.getElementById('login-view').classList.remove('hidden');
+            });
+            document.getElementById('appointment-form').addEventListener('submit', handleAppointmentRequest);
+            
+            document.getElementById('payment-proof-form').addEventListener('submit', handlePaymentProofSubmit);
+            document.getElementById('online-booking-form').addEventListener('submit', handleOnlineBooking);
+
+            document.getElementById('payment-screenshot').addEventListener('change', e => {
+                const preview = document.getElementById('screenshot-preview');
+                const file = e.target.files[0];
+                if(file) {
+                    preview.src = URL.createObjectURL(file);
+                    preview.classList.remove('hidden');
+                }
+            });
+            document.getElementById('design-upload').addEventListener('change', e => {
+                const preview = document.getElementById('design-preview');
+                const file = e.target.files[0];
+                if(file) {
+                    preview.src = URL.createObjectURL(file);
+                    preview.classList.remove('hidden');
+                }
+            });
+
+            document.getElementById('start-scan-btn').addEventListener('click', startScanner);
+            document.getElementById('stop-scan-btn').addEventListener('click', stopScanner);
+            
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tabId = btn.id.replace('tab-', '');
+                    setActiveTab(tabId);
+                });
+            });
+
+            const bell = document.getElementById('client-notification-bell');
+            bell.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setActiveTab('inbox');
+                updateNotificationUI(); // Refresh on open
+            });
+        });
+        
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            const swUrl = `${location.origin}/sw.js`;
+            navigator.serviceWorker.register(swUrl)
+              .then(registration => console.log('Service Worker registered with scope:', registration.scope))
+              .catch(err => console.error('Service Worker registration failed:', err));
+          });
+        }
+    </script>
+</body>
+</html>
